@@ -29,6 +29,210 @@ pub(crate) struct FileParseResult {
     pub imports: Vec<ImportInfo>,
 }
 
+pub(crate) struct Parser<'a> {
+    root_path: &'a Path,
+}
+
+impl<'a> Parser<'a> {
+    pub fn new(root_path: &'a Path) -> Self {
+        Parser { root_path }
+    }
+
+    pub fn parse(&self, file_path: &str) -> Result<FileParseResult> {
+        let mut file = fs::File::open(file_path)?;
+        let mut content = String::new();
+        file.read_to_string(&mut content)?;
+
+        let mut entities = Vec::new();
+
+        // Extract all imports from the file (shared by all entities in this file)
+        let imports = self.extract_imports(&content, file_path);
+        let deps = Rc::new(imports.clone());
+
+        // Strip comments before parsing exports
+        let content_without_comments = strip_comments(&content);
+
+        for line in content_without_comments.lines() {
+            let trimmed = line.trim();
+
+            if trimmed.is_empty() {
+                continue;
+            }
+
+            // Check for exported classes
+            if trimmed.contains("export") && trimmed.contains("class") {
+                if let Some(name) = extract_export_name(trimmed, "class") {
+                    entities.push(Entity::new(
+                        name,
+                        EntityType::Class,
+                        file_path.to_string(),
+                        Rc::clone(&deps),
+                    ));
+                }
+            }
+
+            // Check for exported enums
+            if trimmed.contains("export") && trimmed.contains("enum") {
+                if let Some(name) = extract_export_name(trimmed, "enum") {
+                    entities.push(Entity::new(
+                        name,
+                        EntityType::Enum,
+                        file_path.to_string(),
+                        Rc::clone(&deps),
+                    ));
+                }
+            }
+
+            // Check for exported types
+            if trimmed.contains("export") && trimmed.contains("type") && !trimmed.contains("typeof")
+            {
+                if let Some(name) = extract_export_name(trimmed, "type") {
+                    entities.push(Entity::new(
+                        name,
+                        EntityType::Type,
+                        file_path.to_string(),
+                        Rc::clone(&deps),
+                    ));
+                }
+            }
+
+            // Check for exported interfaces
+            if trimmed.contains("export") && trimmed.contains("interface") {
+                if let Some(name) = extract_export_name(trimmed, "interface") {
+                    entities.push(Entity::new(
+                        name,
+                        EntityType::Interface,
+                        file_path.to_string(),
+                        Rc::clone(&deps),
+                    ));
+                }
+            }
+
+            // Check for exported functions
+            if trimmed.contains("export") && trimmed.contains("function") {
+                if let Some(name) = extract_export_name(trimmed, "function") {
+                    entities.push(Entity::new(
+                        name,
+                        EntityType::Function,
+                        file_path.to_string(),
+                        Rc::clone(&deps),
+                    ));
+                }
+            }
+
+            // Check for export const/let/var function expressions
+            if trimmed.starts_with("export const")
+                || trimmed.starts_with("export let")
+                || trimmed.starts_with("export var")
+            {
+                let keyword = if trimmed.starts_with("export const") {
+                    "const"
+                } else if trimmed.starts_with("export let") {
+                    "let"
+                } else {
+                    "var"
+                };
+
+                if let Some(name) = extract_export_name(trimmed, keyword) {
+                    if trimmed.contains("=>") || trimmed.contains("= function") {
+                        entities.push(Entity::new(
+                            name,
+                            EntityType::Function,
+                            file_path.to_string(),
+                            Rc::clone(&deps),
+                        ));
+                    } else {
+                        entities.push(Entity::new(
+                            name,
+                            EntityType::Const,
+                            file_path.to_string(),
+                            Rc::clone(&deps),
+                        ));
+                    }
+                }
+            }
+        }
+
+        // Check if exported entities are used locally in the same file
+        for entity in &mut entities {
+            if is_entity_used_locally(&content, &entity.name) {
+                entity.used = true;
+            }
+        }
+
+        Ok(FileParseResult { entities, imports })
+    }
+
+    pub fn extract_imports(&self, content: &str, file_path: &str) -> Vec<ImportInfo> {
+        let mut imports = Vec::new();
+
+        // Strip comments first to avoid parsing commented imports
+        let content_without_comments = strip_comments(content);
+
+        // Normalize content: collapse multiline imports into single lines
+        let normalized_content =
+            NORMALIZE_RE.replace_all(&content_without_comments, |caps: &regex::Captures| {
+                let names = caps[1].replace('\n', " ").replace('\r', " ");
+                format!("import {{{}}} from", names)
+            });
+
+        for cap in NAMED_IMPORT_RE.captures_iter(&normalized_content) {
+            let names_str = &cap[1];
+            let import_path = cap[2].to_string();
+
+            let resolved_path =
+                match resolve_import_path(file_path, &import_path, self.root_path) {
+                    Some(path) => path,
+                    None => continue,
+                };
+
+            for name_part in names_str.split(',') {
+                let name_part = name_part.trim();
+                if name_part.is_empty() {
+                    continue;
+                }
+
+                let name = if let Some(pos) = name_part.find(" as ") {
+                    name_part[..pos].trim().to_string()
+                } else {
+                    name_part.to_string()
+                };
+
+                imports.push(ImportInfo::new(name, resolved_path.clone()));
+            }
+        }
+
+        for cap in DEFAULT_IMPORT_RE.captures_iter(&normalized_content) {
+            let name = cap[1].to_string();
+            let import_path = cap[2].to_string();
+
+            if name == "type" || name == "from" {
+                continue;
+            }
+
+            if let Some(resolved_path) =
+                resolve_import_path(file_path, &import_path, self.root_path)
+            {
+                imports.push(ImportInfo::new(name, resolved_path));
+            }
+        }
+
+        // Handle Angular lazy-loaded imports
+        for cap in LAZY_IMPORT_RE.captures_iter(&normalized_content) {
+            let import_path = cap[1].to_string();
+            let name = cap[2].to_string();
+
+            if let Some(resolved_path) =
+                resolve_import_path(file_path, &import_path, self.root_path)
+            {
+                imports.push(ImportInfo::new(name, resolved_path));
+            }
+        }
+
+        imports
+    }
+}
+
 /// Strips single-line (//) and multi-line (/* */) comments from content.
 /// Preserves strings so that comment-like patterns inside strings are not stripped.
 pub(crate) fn strip_comments(content: &str) -> String {
@@ -37,7 +241,6 @@ pub(crate) fn strip_comments(content: &str) -> String {
     let mut in_string: Option<char> = None;
 
     while let Some(c) = chars.next() {
-        // Handle string literals - don't strip "comments" inside strings
         if in_string.is_none() && (c == '"' || c == '\'' || c == '`') {
             in_string = Some(c);
             result.push(c);
@@ -46,7 +249,6 @@ pub(crate) fn strip_comments(content: &str) -> String {
 
         if let Some(quote) = in_string {
             result.push(c);
-            // Handle escape sequences
             if c == '\\' {
                 if let Some(&next) = chars.peek() {
                     result.push(next);
@@ -58,12 +260,10 @@ pub(crate) fn strip_comments(content: &str) -> String {
             continue;
         }
 
-        // Handle single-line comments
         if c == '/' {
             if let Some(&next) = chars.peek() {
                 if next == '/' {
-                    // Skip until end of line
-                    chars.next(); // consume second '/'
+                    chars.next();
                     while let Some(&ch) = chars.peek() {
                         if ch == '\n' {
                             break;
@@ -72,13 +272,12 @@ pub(crate) fn strip_comments(content: &str) -> String {
                     }
                     continue;
                 } else if next == '*' {
-                    // Multi-line comment - skip until */
-                    chars.next(); // consume '*'
+                    chars.next();
                     while let Some(ch) = chars.next() {
                         if ch == '*' {
                             if let Some(&peek) = chars.peek() {
                                 if peek == '/' {
-                                    chars.next(); // consume '/'
+                                    chars.next();
                                     break;
                                 }
                             }
@@ -118,27 +317,21 @@ fn resolve_import_path(
     root_path: &Path,
 ) -> Option<String> {
     let base_path = if import_source.starts_with("@awork/") {
-        // Replace @awork/ with {root_path}/libs/shared/src/lib
-        let rest = &import_source[7..]; // Skip "@awork/"
+        let rest = &import_source[7..];
         root_path.join("libs/shared/src/lib").join(rest)
     } else if import_source.starts_with("./") || import_source.starts_with("../") {
-        // Resolve relative to the importing file's directory
         let importing_dir = Path::new(importing_file).parent()?;
         importing_dir.join(import_source)
     } else {
-        // External package - skip
         return None;
     };
 
-    // Try different file extensions
     let extensions = [".ts", ".tsx", "/index.ts", "/index.tsx"];
 
     for ext in &extensions {
         let full_path = if ext.starts_with('/') {
-            // It's a directory index file
             base_path.join(&ext[1..])
         } else {
-            // It's a file extension
             let path_str = base_path.to_string_lossy();
             Path::new(&format!("{}{}", path_str, ext)).to_path_buf()
         };
@@ -152,7 +345,6 @@ fn resolve_import_path(
         }
     }
 
-    // Also check if the base path itself exists (e.g., importing './foo.ts' directly)
     if base_path.exists() && base_path.is_file() {
         return base_path
             .canonicalize()
@@ -161,9 +353,6 @@ fn resolve_import_path(
             .map(|s| s.to_string());
     }
 
-    // Return the constructed base path even if file doesn't exist
-    // This handles cases where the import path is valid but file might not be scanned
-    // Always add .ts extension if not already present
     let path_str = base_path.to_string_lossy().to_string();
     if path_str.ends_with(".ts") || path_str.ends_with(".tsx") {
         Some(path_str)
@@ -172,212 +361,13 @@ fn resolve_import_path(
     }
 }
 
-pub(crate) fn extract_imports(content: &str, file_path: &str, root_path: &Path) -> Vec<ImportInfo> {
-    let mut imports = Vec::new();
-
-    // Strip comments first to avoid parsing commented imports
-    let content_without_comments = strip_comments(content);
-
-    // Normalize content: collapse multiline imports into single lines
-    let normalized_content =
-        NORMALIZE_RE.replace_all(&content_without_comments, |caps: &regex::Captures| {
-            let names = caps[1].replace('\n', " ").replace('\r', " ");
-            format!("import {{{}}} from", names)
-        });
-
-    for cap in NAMED_IMPORT_RE.captures_iter(&normalized_content) {
-        let names_str = &cap[1];
-        let import_path = cap[2].to_string();
-
-        // Resolve the import path, skip external packages
-        let resolved_path = match resolve_import_path(file_path, &import_path, root_path) {
-            Some(path) => path,
-            None => continue,
-        };
-
-        // Parse each imported name, handling aliases like "Foo as F"
-        for name_part in names_str.split(',') {
-            let name_part = name_part.trim();
-            if name_part.is_empty() {
-                continue;
-            }
-
-            // Handle "Foo as Bar" - take the original name "Foo"
-            let name = if let Some(pos) = name_part.find(" as ") {
-                name_part[..pos].trim().to_string()
-            } else {
-                name_part.to_string()
-            };
-
-            imports.push(ImportInfo::new(name, resolved_path.clone()));
-        }
-    }
-
-    for cap in DEFAULT_IMPORT_RE.captures_iter(&normalized_content) {
-        let name = cap[1].to_string();
-        let import_path = cap[2].to_string();
-
-        // Skip if this looks like a type import or other keyword
-        if name == "type" || name == "from" {
-            continue;
-        }
-
-        // Resolve the import path, skip external packages
-        if let Some(resolved_path) = resolve_import_path(file_path, &import_path, root_path) {
-            imports.push(ImportInfo::new(name, resolved_path));
-        }
-    }
-
-    // Handle Angular lazy-loaded imports: loadChildren: () => import('./path').then(m => m.Module)
-    for cap in LAZY_IMPORT_RE.captures_iter(&normalized_content) {
-        let import_path = cap[1].to_string();
-        let name = cap[2].to_string();
-
-        // Resolve the import path, skip external packages
-        if let Some(resolved_path) = resolve_import_path(file_path, &import_path, root_path) {
-            imports.push(ImportInfo::new(name, resolved_path));
-        }
-    }
-
-    imports
-}
-
 fn is_entity_used_locally(content: &str, entity_name: &str) -> bool {
-    // Create a regex pattern that matches the entity name as a whole word
-    // This avoids matching substrings (e.g., "Foo" in "FooBar")
     let pattern = format!(r"\b{}\b", regex::escape(entity_name));
     let re = match Regex::new(&pattern) {
         Ok(r) => r,
         Err(_) => return false,
     };
 
-    // Count occurrences - if more than 1, it's used locally (1 = export definition)
     let matches: Vec<_> = re.find_iter(content).collect();
     matches.len() > 1
-}
-
-pub(crate) fn parse_typescript_file(file_path: &str, root_path: &Path) -> Result<FileParseResult> {
-    let mut file = fs::File::open(file_path)?;
-    let mut content = String::new();
-    file.read_to_string(&mut content)?;
-
-    let mut entities = Vec::new();
-
-    // Extract all imports from the file (shared by all entities in this file)
-    let imports = extract_imports(&content, file_path, root_path);
-    let deps = Rc::new(imports.clone());
-
-    // Strip comments before parsing exports
-    let content_without_comments = strip_comments(&content);
-
-    for line in content_without_comments.lines() {
-        let trimmed = line.trim();
-
-        // Skip empty lines
-        if trimmed.is_empty() {
-            continue;
-        }
-
-        // Check for exported classes
-        if trimmed.contains("export") && trimmed.contains("class") {
-            if let Some(name) = extract_export_name(trimmed, "class") {
-                entities.push(Entity::new(
-                    name,
-                    EntityType::Class,
-                    file_path.to_string(),
-                    Rc::clone(&deps),
-                ));
-            }
-        }
-
-        // Check for exported enums
-        if trimmed.contains("export") && trimmed.contains("enum") {
-            if let Some(name) = extract_export_name(trimmed, "enum") {
-                entities.push(Entity::new(
-                    name,
-                    EntityType::Enum,
-                    file_path.to_string(),
-                    Rc::clone(&deps),
-                ));
-            }
-        }
-
-        // Check for exported types
-        if trimmed.contains("export") && trimmed.contains("type") && !trimmed.contains("typeof") {
-            if let Some(name) = extract_export_name(trimmed, "type") {
-                entities.push(Entity::new(
-                    name,
-                    EntityType::Type,
-                    file_path.to_string(),
-                    Rc::clone(&deps),
-                ));
-            }
-        }
-
-        // Check for exported interfaces
-        if trimmed.contains("export") && trimmed.contains("interface") {
-            if let Some(name) = extract_export_name(trimmed, "interface") {
-                entities.push(Entity::new(
-                    name,
-                    EntityType::Interface,
-                    file_path.to_string(),
-                    Rc::clone(&deps),
-                ));
-            }
-        }
-
-        // Check for exported functions
-        if trimmed.contains("export") && trimmed.contains("function") {
-            if let Some(name) = extract_export_name(trimmed, "function") {
-                entities.push(Entity::new(
-                    name,
-                    EntityType::Function,
-                    file_path.to_string(),
-                    Rc::clone(&deps),
-                ));
-            }
-        }
-
-        // Check for export const/let/var function expressions
-        if trimmed.starts_with("export const")
-            || trimmed.starts_with("export let")
-            || trimmed.starts_with("export var")
-        {
-            let keyword = if trimmed.starts_with("export const") {
-                "const"
-            } else if trimmed.starts_with("export let") {
-                "let"
-            } else {
-                "var"
-            };
-
-            if let Some(name) = extract_export_name(trimmed, keyword) {
-                // Consider it a function if the line contains => or = function
-                if trimmed.contains("=>") || trimmed.contains("= function") {
-                    entities.push(Entity::new(
-                        name,
-                        EntityType::Function,
-                        file_path.to_string(),
-                        Rc::clone(&deps),
-                    ));
-                } else {
-                    entities.push(Entity::new(
-                        name,
-                        EntityType::Const,
-                        file_path.to_string(),
-                        Rc::clone(&deps),
-                    ));
-                }
-            }
-        }
-    }
-
-    // Check if exported entities are used locally in the same file
-    for entity in &mut entities {
-        if is_entity_used_locally(&content, &entity.name) {
-            entity.used = true;
-        }
-    }
-
-    Ok(FileParseResult { entities, imports })
 }

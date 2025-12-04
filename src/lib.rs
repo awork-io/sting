@@ -9,8 +9,8 @@ use std::rc::Rc;
 use anyhow::Result;
 
 use entity::{Entity, EntityType};
-use parser::parse_typescript_file;
-use scanner::list_typescript_files;
+use parser::Parser;
+use scanner::Scanner;
 
 struct ScanResult {
     entities: HashMap<String, Entity>,
@@ -19,6 +19,8 @@ struct ScanResult {
 fn scan_and_parse_files(root_path: &Path, verbose: bool) -> Result<ScanResult> {
     let subdirs = ["apps/web", "apps/mobile", "libs"];
     let mut all_files = Vec::new();
+
+    let scanner = Scanner::new();
 
     for subdir in subdirs {
         let full_path = root_path.join(subdir);
@@ -34,7 +36,7 @@ fn scan_and_parse_files(root_path: &Path, verbose: bool) -> Result<ScanResult> {
             println!("Scanning directory: {:?}", full_path);
         }
 
-        match list_typescript_files(&full_path) {
+        match scanner.scan(&full_path) {
             Ok(mut files) => {
                 if verbose {
                     println!("  Found {} TypeScript files", files.len());
@@ -59,8 +61,10 @@ fn scan_and_parse_files(root_path: &Path, verbose: bool) -> Result<ScanResult> {
         println!("Processing {} TypeScript files...\n", all_files.len());
     }
 
+    let parser = Parser::new(root_path);
+
     for file in &all_files {
-        match parse_typescript_file(file, root_path) {
+        match parser.parse(file) {
             Ok(result) => {
                 for import in &result.imports {
                     if let Some(existing) = entities_map.get_mut(&import.id) {
@@ -169,7 +173,7 @@ pub fn unused(root_path: &Path) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::parser::{extract_imports, strip_comments};
+    use super::parser::{strip_comments, Parser};
     use std::path::Path;
 
     #[test]
@@ -178,7 +182,8 @@ mod tests {
         let root_path = Path::new("/project");
         let file_path = "/project/src/bar.ts";
 
-        let imports = extract_imports(content, file_path, root_path);
+        let parser = Parser::new(root_path);
+        let imports = parser.extract_imports(content, file_path);
 
         assert_eq!(imports.len(), 1);
         assert_eq!(imports[0].name, "Foo");
@@ -191,7 +196,8 @@ mod tests {
         let root_path = Path::new("/project");
         let file_path = "/project/src/index.ts";
 
-        let imports = extract_imports(content, file_path, root_path);
+        let parser = Parser::new(root_path);
+        let imports = parser.extract_imports(content, file_path);
 
         assert_eq!(imports.len(), 3);
         assert_eq!(imports[0].name, "Foo");
@@ -209,7 +215,8 @@ mod tests {
         let root_path = Path::new("/project");
         let file_path = "/project/src/index.ts";
 
-        let imports = extract_imports(content, file_path, root_path);
+        let parser = Parser::new(root_path);
+        let imports = parser.extract_imports(content, file_path);
 
         assert_eq!(imports.len(), 3);
         assert_eq!(imports[0].name, "Foo");
@@ -223,7 +230,8 @@ mod tests {
         let root_path = Path::new("/project");
         let file_path = "/project/src/index.ts";
 
-        let imports = extract_imports(content, file_path, root_path);
+        let parser = Parser::new(root_path);
+        let imports = parser.extract_imports(content, file_path);
 
         assert_eq!(imports.len(), 2);
         assert_eq!(imports[0].name, "Foo");
@@ -236,7 +244,8 @@ mod tests {
         let root_path = Path::new("/project");
         let file_path = "/project/src/bar.ts";
 
-        let imports = extract_imports(content, file_path, root_path);
+        let parser = Parser::new(root_path);
+        let imports = parser.extract_imports(content, file_path);
 
         assert_eq!(imports.len(), 1);
         assert_eq!(imports[0].name, "Foo");
@@ -248,7 +257,8 @@ mod tests {
         let root_path = Path::new("/project");
         let file_path = "/project/apps/web/src/index.ts";
 
-        let imports = extract_imports(content, file_path, root_path);
+        let parser = Parser::new(root_path);
+        let imports = parser.extract_imports(content, file_path);
 
         assert_eq!(imports.len(), 1);
         assert_eq!(imports[0].name, "Model");
@@ -265,7 +275,8 @@ import { Foo } from './local';"#;
         let root_path = Path::new("/project");
         let file_path = "/project/src/index.ts";
 
-        let imports = extract_imports(content, file_path, root_path);
+        let parser = Parser::new(root_path);
+        let imports = parser.extract_imports(content, file_path);
 
         assert_eq!(imports.len(), 1);
         assert_eq!(imports[0].name, "Foo");
@@ -279,7 +290,8 @@ import Default from './default';"#;
         let root_path = Path::new("/project");
         let file_path = "/project/src/index.ts";
 
-        let imports = extract_imports(content, file_path, root_path);
+        let parser = Parser::new(root_path);
+        let imports = parser.extract_imports(content, file_path);
 
         assert_eq!(imports.len(), 4);
         assert_eq!(imports[0].name, "Foo");
@@ -294,7 +306,8 @@ import Default from './default';"#;
         let root_path = Path::new("/project");
         let file_path = "/project/src/components/button.ts";
 
-        let imports = extract_imports(content, file_path, root_path);
+        let parser = Parser::new(root_path);
+        let imports = parser.extract_imports(content, file_path);
 
         assert_eq!(imports.len(), 1);
         assert_eq!(imports[0].name, "Util");
@@ -308,7 +321,8 @@ import Default from './default';"#;
         let root_path = Path::new("/project");
         let file_path = "/project/src/bar.ts";
 
-        let imports = extract_imports(content, file_path, root_path);
+        let parser = Parser::new(root_path);
+        let imports = parser.extract_imports(content, file_path);
 
         assert_eq!(imports.len(), 1);
         assert!(imports[0].path.ends_with(".ts"));
@@ -323,7 +337,8 @@ import Default from './default';"#;
         let root_path = Path::new("/project");
         let file_path = "/project/src/index.ts";
 
-        let imports = extract_imports(content, file_path, root_path);
+        let parser = Parser::new(root_path);
+        let imports = parser.extract_imports(content, file_path);
 
         assert_eq!(imports.len(), 2);
         assert_eq!(imports[0].name, "Foo");
@@ -336,7 +351,8 @@ import Default from './default';"#;
         let root_path = Path::new("/project");
         let file_path = "/project/src/bar.ts";
 
-        let imports = extract_imports(content, file_path, root_path);
+        let parser = Parser::new(root_path);
+        let imports = parser.extract_imports(content, file_path);
 
         assert_eq!(imports.len(), 1);
         assert!(!imports[0].id.is_empty());
@@ -384,7 +400,8 @@ import { Bar } from './bar';"#;
         let root_path = Path::new("/project");
         let file_path = "/project/src/index.ts";
 
-        let imports = extract_imports(content, file_path, root_path);
+        let parser = Parser::new(root_path);
+        let imports = parser.extract_imports(content, file_path);
 
         assert_eq!(imports.len(), 1);
         assert_eq!(imports[0].name, "Bar");
@@ -397,7 +414,8 @@ import { Bar } from './bar';"#;
         let root_path = Path::new("/project");
         let file_path = "/project/src/index.ts";
 
-        let imports = extract_imports(content, file_path, root_path);
+        let parser = Parser::new(root_path);
+        let imports = parser.extract_imports(content, file_path);
 
         assert_eq!(imports.len(), 1);
         assert_eq!(imports[0].name, "Bar");
@@ -413,7 +431,8 @@ import { Bar } from './bar';"#;
         let root_path = Path::new("/project");
         let file_path = "/project/src/index.ts";
 
-        let imports = extract_imports(content, file_path, root_path);
+        let parser = Parser::new(root_path);
+        let imports = parser.extract_imports(content, file_path);
 
         assert_eq!(imports.len(), 1);
         assert_eq!(imports[0].name, "Bar");
@@ -430,7 +449,8 @@ import { Bar } from './bar';"#;
         let root_path = Path::new("/project");
         let file_path = "/project/src/app-routing.module.ts";
 
-        let imports = extract_imports(content, file_path, root_path);
+        let parser = Parser::new(root_path);
+        let imports = parser.extract_imports(content, file_path);
 
         assert_eq!(imports.len(), 1);
         assert_eq!(imports[0].name, "AuthModule");
@@ -452,7 +472,8 @@ import { Bar } from './bar';"#;
         let root_path = Path::new("/project");
         let file_path = "/project/src/app-routing.module.ts";
 
-        let imports = extract_imports(content, file_path, root_path);
+        let parser = Parser::new(root_path);
+        let imports = parser.extract_imports(content, file_path);
 
         assert_eq!(imports.len(), 2);
         assert_eq!(imports[0].name, "AuthModule");
@@ -465,7 +486,8 @@ import { Bar } from './bar';"#;
         let root_path = Path::new("/project");
         let file_path = "/project/src/app-routing.module.ts";
 
-        let imports = extract_imports(content, file_path, root_path);
+        let parser = Parser::new(root_path);
+        let imports = parser.extract_imports(content, file_path);
 
         assert_eq!(imports.len(), 1);
         assert_eq!(imports[0].name, "UsersModule");
