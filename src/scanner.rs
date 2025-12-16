@@ -3,14 +3,23 @@ use std::path::Path;
 
 use anyhow::Result;
 
-const DEFAULT_SKIP_DIRECTORIES: &[&str] =
-    &["mocks", "__mocks__", "mocks_stubs", "tests", "environments", "i18n"];
+const DEFAULT_SKIP_DIRECTORIES: &[&str] = &[
+    "mocks",
+    "__mocks__",
+    "mocks_stubs",
+    "tests",
+    "environments",
+    "i18n",
+    ".storybook",
+    "fakes",
+];
 
 const DEFAULT_SKIP_FILE_SUFFIXES: &[&str] = &[
-    ".spec.ts",
     ".d.ts",
     ".stories.ts",
     "-stub.ts",
+    "-test.ts",
+    "-stub.service.ts",
     "mocks.ts",
     "mock.ts",
 ];

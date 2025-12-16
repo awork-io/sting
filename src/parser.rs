@@ -295,19 +295,38 @@ pub(crate) fn strip_comments(content: &str) -> String {
 }
 
 fn extract_export_name(line: &str, keyword: &str) -> Option<String> {
-    if let Some(pos) = line.find(keyword) {
+    let mut search_start = 0;
+
+    while let Some(relative_pos) = line[search_start..].find(keyword) {
+        let pos = search_start + relative_pos;
+
+        // Check that keyword is not part of another word:
+        // - preceded by non-alphanumeric (or start of string)
+        // - followed by whitespace
+        let char_before_ok = pos == 0 || {
+            let prev_char = line[..pos].chars().last().unwrap();
+            !prev_char.is_alphanumeric() && prev_char != '_'
+        };
+
         let after_keyword = &line[pos + keyword.len()..];
+        let char_after_ok = after_keyword.starts_with(|c: char| c.is_whitespace());
 
-        let identifier: String = after_keyword
-            .trim_start()
-            .chars()
-            .take_while(|c| c.is_alphanumeric() || *c == '_')
-            .collect();
+        if char_before_ok && char_after_ok {
+            let identifier: String = after_keyword
+                .trim_start()
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
 
-        if !identifier.is_empty() {
-            return Some(identifier);
+            if !identifier.is_empty() {
+                return Some(identifier);
+            }
         }
+
+        // Continue searching after this position
+        search_start = pos + keyword.len();
     }
+
     None
 }
 
