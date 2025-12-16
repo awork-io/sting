@@ -2,7 +2,9 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
-#[derive(Debug, Clone)]
+use serde::Serialize;
+
+#[derive(Debug, Clone, Serialize)]
 pub(crate) enum EntityType {
     Unknown,
     Class,
@@ -27,7 +29,7 @@ impl std::fmt::Display for EntityType {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub(crate) struct ImportInfo {
     pub id: String,
     pub name: String,
@@ -41,12 +43,13 @@ impl ImportInfo {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub(crate) struct Entity {
     pub id: String,
     pub name: String,
     pub entity_type: EntityType,
     pub file_path: String,
+    #[serde(skip)]
     pub deps: Rc<Vec<ImportInfo>>,
     pub used: bool,
 }

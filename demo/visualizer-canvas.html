@@ -1,0 +1,832 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>nxalyzer - Dependency Graph (Canvas)</title>
+    <script src="https://unpkg.com/d3"></script>
+    <script src="https://unpkg.com/force-graph"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: #1a1a2e;
+        color: #eee;
+        overflow: hidden;
+      }
+      #graph {
+        width: 100vw;
+        height: 100vh;
+      }
+      #controls {
+        position: fixed;
+        top: 20px;
+        left: 20px;
+        z-index: 100;
+        background: #16213e;
+        padding: 16px;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        min-width: 220px;
+        max-height: calc(100vh - 40px);
+        overflow-y: auto;
+      }
+      #controls h2 {
+        margin-bottom: 12px;
+        font-size: 14px;
+        color: #888;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+      #file-input {
+        display: none;
+      }
+      #upload-btn {
+        background: #0f3460;
+        color: #fff;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 14px;
+        transition: background 0.2s;
+        width: 100%;
+      }
+      #upload-btn:hover {
+        background: #1a4a7a;
+      }
+      .control-group {
+        margin-top: 16px;
+        padding-top: 16px;
+        border-top: 1px solid #334;
+      }
+      .control-group label {
+        display: flex;
+        align-items: center;
+        cursor: pointer;
+        font-size: 13px;
+        margin-bottom: 8px;
+      }
+      .control-group input[type="checkbox"] {
+        margin-right: 8px;
+      }
+      .control-group input[type="range"] {
+        width: 100%;
+        margin-top: 4px;
+      }
+      .slider-label {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+        color: #888;
+        margin-top: 4px;
+      }
+      .slider-row {
+        margin-bottom: 12px;
+      }
+      .slider-row > label {
+        margin-bottom: 4px;
+      }
+      .filter-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+        font-size: 13px;
+      }
+      .filter-actions {
+        display: flex;
+        gap: 4px;
+      }
+      .filter-btn {
+        background: #0f3460;
+        color: #aaa;
+        border: none;
+        padding: 3px 8px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 11px;
+      }
+      .filter-btn:hover {
+        background: #1a4a7a;
+        color: #fff;
+      }
+      .filter-item {
+        display: flex;
+        align-items: center;
+        cursor: pointer;
+        font-size: 12px;
+        margin-bottom: 6px;
+        padding: 4px 6px;
+        border-radius: 4px;
+        transition: background 0.15s;
+      }
+      .filter-item:hover {
+        background: rgba(255, 255, 255, 0.05);
+      }
+      .filter-item input {
+        margin-right: 8px;
+      }
+      .filter-color {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        margin-right: 8px;
+      }
+      #stats {
+        margin-top: 12px;
+        font-size: 12px;
+        color: #888;
+      }
+      #legend {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        background: #16213e;
+        padding: 16px;
+        border-radius: 8px;
+        font-size: 12px;
+        z-index: 100;
+      }
+      #legend h3 {
+        font-size: 11px;
+        color: #888;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 8px;
+      }
+      #legend h3:not(:first-child) {
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px solid #334;
+      }
+      .legend-item {
+        display: flex;
+        align-items: center;
+        margin-bottom: 6px;
+      }
+      .legend-item:last-child {
+        margin-bottom: 0;
+      }
+      .legend-color {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        margin-right: 8px;
+      }
+      .legend-color.cluster {
+        border-radius: 3px;
+        opacity: 0.6;
+      }
+      #tooltip {
+        position: fixed;
+        background: #16213e;
+        padding: 12px;
+        border-radius: 6px;
+        font-size: 12px;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.15s;
+        max-width: 400px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        z-index: 200;
+      }
+      #tooltip.visible {
+        opacity: 1;
+      }
+      #tooltip .name {
+        font-weight: bold;
+        font-size: 14px;
+        margin-bottom: 4px;
+      }
+      #tooltip .type {
+        color: #888;
+        margin-bottom: 4px;
+      }
+      #tooltip .cluster {
+        color: #06d6a0;
+        margin-bottom: 4px;
+      }
+      #tooltip .file {
+        color: #666;
+        word-break: break-all;
+      }
+      #perf-stats {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: #16213e;
+        padding: 10px 14px;
+        border-radius: 6px;
+        font-size: 11px;
+        color: #888;
+        z-index: 100;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="graph"></div>
+
+    <div id="controls">
+      <h2>Load Graph</h2>
+      <input type="file" id="file-input" accept=".json" />
+      <button id="upload-btn">Select graph.json</button>
+      <div id="stats"></div>
+
+      <div class="control-group">
+        <label>
+          <input type="checkbox" id="cluster-toggle" checked />
+          Enable Clustering
+        </label>
+        <label>
+          <input type="checkbox" id="labels-toggle" />
+          Show Labels
+        </label>
+        <label>
+          <input type="checkbox" id="arrows-toggle" checked />
+          Show Arrows
+        </label>
+      </div>
+
+      <div class="control-group">
+        <div class="slider-row">
+          <label for="cluster-strength">Cluster Strength</label>
+          <input
+            type="range"
+            id="cluster-strength"
+            min="0"
+            max="1"
+            step="0.05"
+            value="0.3"
+          />
+          <div class="slider-label"><span>Loose</span><span>Tight</span></div>
+        </div>
+        <div class="slider-row">
+          <label for="link-distance">Link Distance</label>
+          <input
+            type="range"
+            id="link-distance"
+            min="20"
+            max="200"
+            step="10"
+            value="60"
+          />
+          <div class="slider-label"><span>Short</span><span>Long</span></div>
+        </div>
+        <div class="slider-row">
+          <label for="charge-strength">Repulsion</label>
+          <input
+            type="range"
+            id="charge-strength"
+            min="-500"
+            max="-10"
+            step="10"
+            value="-120"
+          />
+          <div class="slider-label"><span>Strong</span><span>Weak</span></div>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <div class="filter-header">
+          <span>Filter by Type</span>
+          <div class="filter-actions">
+            <button id="select-all-types" class="filter-btn">All</button>
+            <button id="select-none-types" class="filter-btn">None</button>
+          </div>
+        </div>
+        <label class="filter-item">
+          <input
+            type="checkbox"
+            class="type-filter"
+            data-type="class"
+            checked
+          />
+          <span class="filter-color" style="background: #e94560"></span>
+          Class
+        </label>
+        <label class="filter-item">
+          <input
+            type="checkbox"
+            class="type-filter"
+            data-type="interface"
+            checked
+          />
+          <span class="filter-color" style="background: #4a90d9"></span>
+          Interface
+        </label>
+        <label class="filter-item">
+          <input type="checkbox" class="type-filter" data-type="type" checked />
+          <span class="filter-color" style="background: #00b4d8"></span>
+          Type
+        </label>
+        <label class="filter-item">
+          <input
+            type="checkbox"
+            class="type-filter"
+            data-type="function"
+            checked
+          />
+          <span class="filter-color" style="background: #06d6a0"></span>
+          Function
+        </label>
+        <label class="filter-item">
+          <input type="checkbox" class="type-filter" data-type="enum" checked />
+          <span class="filter-color" style="background: #ffd166"></span>
+          Enum
+        </label>
+        <label class="filter-item">
+          <input
+            type="checkbox"
+            class="type-filter"
+            data-type="const"
+            checked
+          />
+          <span class="filter-color" style="background: #9d4edd"></span>
+          Const
+        </label>
+        <label class="filter-item">
+          <input
+            type="checkbox"
+            class="type-filter"
+            data-type="unknown"
+            checked
+          />
+          <span class="filter-color" style="background: #666"></span>
+          Unknown
+        </label>
+      </div>
+
+      <div class="control-group">
+        <div class="filter-header">
+          <span>Filter by Cluster</span>
+          <div class="filter-actions">
+            <button id="select-all-clusters" class="filter-btn">All</button>
+            <button id="select-none-clusters" class="filter-btn">None</button>
+          </div>
+        </div>
+        <label class="filter-item">
+          <input
+            type="checkbox"
+            class="cluster-filter"
+            data-cluster="web"
+            checked
+          />
+          <span class="filter-color" style="background: #e94560"></span>
+          Web App
+        </label>
+        <label class="filter-item">
+          <input
+            type="checkbox"
+            class="cluster-filter"
+            data-cluster="mobile"
+            checked
+          />
+          <span class="filter-color" style="background: #06d6a0"></span>
+          Mobile App
+        </label>
+        <label class="filter-item">
+          <input
+            type="checkbox"
+            class="cluster-filter"
+            data-cluster="libs"
+            checked
+          />
+          <span class="filter-color" style="background: #00b4d8"></span>
+          Libs
+        </label>
+        <label class="filter-item">
+          <input
+            type="checkbox"
+            class="cluster-filter"
+            data-cluster="other"
+            checked
+          />
+          <span class="filter-color" style="background: #888"></span>
+          Other
+        </label>
+      </div>
+    </div>
+
+    <div id="tooltip">
+      <div class="name"></div>
+      <div class="type"></div>
+      <div class="cluster"></div>
+      <div class="file"></div>
+    </div>
+
+    <div id="legend">
+      <h3>Entity Type (fill)</h3>
+      <div class="legend-item">
+        <div class="legend-color" style="background: #e94560"></div>
+        Class
+      </div>
+      <div class="legend-item">
+        <div class="legend-color" style="background: #4a90d9"></div>
+        Interface
+      </div>
+      <div class="legend-item">
+        <div class="legend-color" style="background: #00b4d8"></div>
+        Type
+      </div>
+      <div class="legend-item">
+        <div class="legend-color" style="background: #06d6a0"></div>
+        Function
+      </div>
+      <div class="legend-item">
+        <div class="legend-color" style="background: #ffd166"></div>
+        Enum
+      </div>
+      <div class="legend-item">
+        <div class="legend-color" style="background: #9d4edd"></div>
+        Const
+      </div>
+
+      <h3>Cluster (ring)</h3>
+      <div class="legend-item">
+        <div class="legend-color cluster" style="background: #e94560"></div>
+        Web App
+      </div>
+      <div class="legend-item">
+        <div class="legend-color cluster" style="background: #06d6a0"></div>
+        Mobile App
+      </div>
+      <div class="legend-item">
+        <div class="legend-color cluster" style="background: #00b4d8"></div>
+        Libs
+      </div>
+      <div class="legend-item">
+        <div class="legend-color cluster" style="background: #888"></div>
+        Other
+      </div>
+    </div>
+
+    <div id="perf-stats">FPS: --</div>
+
+    <script>
+      const typeColors = {
+        class: "#e94560",
+        interface: "#4a90d9",
+        type: "#00b4d8",
+        function: "#06d6a0",
+        enum: "#ffd166",
+        const: "#9d4edd",
+        unknown: "#666",
+      };
+
+      const clusterColors = {
+        web: "#e94560",
+        mobile: "#06d6a0",
+        libs: "#00b4d8",
+        other: "#888",
+      };
+
+      const clusterLabels = {
+        web: "Web App",
+        mobile: "Mobile App",
+        libs: "Libs",
+        other: "Other",
+      };
+
+      // Cluster centers (will be updated based on screen size)
+      let width = window.innerWidth;
+      let height = window.innerHeight;
+
+      function getClusterCenters() {
+        return {
+          web: { x: -width * 0.2, y: -height * 0.1 },
+          mobile: { x: width * 0.2, y: -height * 0.1 },
+          libs: { x: 0, y: height * 0.2 },
+          other: { x: 0, y: -height * 0.25 },
+        };
+      }
+
+      let clusterCenters = getClusterCenters();
+
+      function getCluster(filePath) {
+        if (filePath.includes("apps/web") || filePath.includes("apps\\web"))
+          return "web";
+        if (
+          filePath.includes("apps/mobile") ||
+          filePath.includes("apps\\mobile")
+        )
+          return "mobile";
+        if (filePath.includes("libs") || filePath.includes("libs\\"))
+          return "libs";
+        return "other";
+      }
+
+      let rawData = null;
+      let graph = null;
+
+      // Initialize force-graph
+      const graphContainer = document.getElementById("graph");
+
+      graph = ForceGraph()(graphContainer)
+        .backgroundColor("#1a1a2e")
+        .nodeRelSize(6)
+        .nodeCanvasObject((node, ctx, globalScale) => {
+          const size = 6;
+          const fontSize = 12 / globalScale;
+          const showLabels = document.getElementById("labels-toggle").checked;
+
+          // Draw outer ring (cluster color)
+          ctx.beginPath();
+          ctx.arc(node.x, node.y, size + 2, 0, 2 * Math.PI);
+          ctx.fillStyle = clusterColors[node.cluster] || "#888";
+          ctx.fill();
+
+          // Draw inner circle (type color)
+          ctx.beginPath();
+          ctx.arc(node.x, node.y, size, 0, 2 * Math.PI);
+          ctx.fillStyle = typeColors[node.type] || "#666";
+          ctx.fill();
+
+          // Draw label if enabled
+          if (showLabels && globalScale > 0.5) {
+            ctx.font = `${fontSize}px Sans-Serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "top";
+            ctx.fillStyle = "rgba(255,255,255,0.8)";
+            ctx.fillText(node.name, node.x, node.y + size + 2);
+          }
+        })
+        .nodePointerAreaPaint((node, color, ctx) => {
+          ctx.beginPath();
+          ctx.arc(node.x, node.y, 8, 0, 2 * Math.PI);
+          ctx.fillStyle = color;
+          ctx.fill();
+        })
+        .linkColor(() => "rgba(100, 100, 120, 0.4)")
+        .linkWidth(1)
+        .linkDirectionalArrowLength(6)
+        .linkDirectionalArrowRelPos(1)
+        .onNodeHover(handleNodeHover)
+        .onNodeClick(handleNodeClick)
+        .cooldownTicks(100)
+        .onEngineStop(() => {
+          // Graph has stabilized
+        });
+
+      // FPS counter
+      let frameCount = 0;
+      let lastTime = performance.now();
+      function updateFPS() {
+        frameCount++;
+        const now = performance.now();
+        if (now - lastTime >= 1000) {
+          document.getElementById("perf-stats").textContent =
+            `FPS: ${frameCount}`;
+          frameCount = 0;
+          lastTime = now;
+        }
+        requestAnimationFrame(updateFPS);
+      }
+      updateFPS();
+
+      // Tooltip handling
+      const tooltip = document.getElementById("tooltip");
+
+      function handleNodeHover(node, prevNode) {
+        if (node) {
+          tooltip.classList.add("visible");
+          tooltip.querySelector(".name").textContent = node.name;
+          tooltip.querySelector(".type").textContent = `Type: ${node.type}`;
+          tooltip.querySelector(".cluster").textContent =
+            `Cluster: ${clusterLabels[node.cluster] || node.cluster}`;
+          tooltip.querySelector(".file").textContent = node.file;
+          graphContainer.style.cursor = "pointer";
+        } else {
+          tooltip.classList.remove("visible");
+          graphContainer.style.cursor = "default";
+        }
+      }
+
+      function handleNodeClick(node) {
+        if (node) {
+          // Center on node
+          graph.centerAt(node.x, node.y, 500);
+          graph.zoom(2, 500);
+        }
+      }
+
+      // Track mouse for tooltip position
+      graphContainer.addEventListener("mousemove", (e) => {
+        tooltip.style.left = e.clientX + 15 + "px";
+        tooltip.style.top = e.clientY + 15 + "px";
+      });
+
+      // Filter functions
+      function getSelectedTypes() {
+        return Array.from(
+          document.querySelectorAll(".type-filter:checked"),
+        ).map((cb) => cb.dataset.type);
+      }
+
+      function getSelectedClusters() {
+        return Array.from(
+          document.querySelectorAll(".cluster-filter:checked"),
+        ).map((cb) => cb.dataset.cluster);
+      }
+
+      function filterData(data) {
+        const selectedTypes = getSelectedTypes();
+        const selectedClusters = getSelectedClusters();
+
+        const filteredNodes = data.nodes.filter(
+          (n) =>
+            selectedTypes.includes(n.type) &&
+            selectedClusters.includes(n.cluster),
+        );
+        const nodeIds = new Set(filteredNodes.map((n) => n.id));
+        const filteredLinks = data.links.filter((l) => {
+          const sourceId =
+            typeof l.source === "object" ? l.source.id : l.source;
+          const targetId =
+            typeof l.target === "object" ? l.target.id : l.target;
+          return nodeIds.has(sourceId) && nodeIds.has(targetId);
+        });
+
+        return {
+          nodes: filteredNodes.map((n) => ({ ...n })),
+          links: filteredLinks.map((l) => ({
+            source: typeof l.source === "object" ? l.source.id : l.source,
+            target: typeof l.target === "object" ? l.target.id : l.target,
+          })),
+        };
+      }
+
+      function updateStats(filtered, total) {
+        const statsEl = document.getElementById("stats");
+        if (filtered.nodes.length !== total.nodes.length) {
+          statsEl.textContent = `${filtered.nodes.length}/${total.nodes.length} nodes, ${filtered.links.length}/${total.links.length} edges`;
+        } else {
+          statsEl.textContent = `${filtered.nodes.length} nodes, ${filtered.links.length} edges`;
+        }
+      }
+
+      function applyClusterForces() {
+        const clusteringEnabled =
+          document.getElementById("cluster-toggle").checked;
+        const strength = parseFloat(
+          document.getElementById("cluster-strength").value,
+        );
+
+        if (clusteringEnabled) {
+          graph.d3Force(
+            "x",
+            d3
+              .forceX((d) => clusterCenters[d.cluster]?.x || 0)
+              .strength(strength),
+          );
+          graph.d3Force(
+            "y",
+            d3
+              .forceY((d) => clusterCenters[d.cluster]?.y || 0)
+              .strength(strength),
+          );
+        } else {
+          graph.d3Force("x", d3.forceX(0).strength(0.05));
+          graph.d3Force("y", d3.forceY(0).strength(0.05));
+        }
+      }
+
+      function updateGraph() {
+        if (!rawData) return;
+
+        const filtered = filterData(rawData);
+        updateStats(filtered, rawData);
+
+        graph.graphData(filtered);
+        applyClusterForces();
+
+        // Update force parameters
+        const linkDistance = parseInt(
+          document.getElementById("link-distance").value,
+        );
+        const chargeStrength = parseInt(
+          document.getElementById("charge-strength").value,
+        );
+
+        graph.d3Force("link").distance(linkDistance);
+        graph.d3Force("charge").strength(chargeStrength);
+
+        // Arrow visibility
+        const showArrows = document.getElementById("arrows-toggle").checked;
+        graph.linkDirectionalArrowLength(showArrows ? 6 : 0);
+
+        graph.d3ReheatSimulation();
+      }
+
+      // File upload
+      const fileInput = document.getElementById("file-input");
+      const uploadBtn = document.getElementById("upload-btn");
+
+      uploadBtn.addEventListener("click", () => fileInput.click());
+
+      fileInput.addEventListener("change", (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          try {
+            const data = JSON.parse(e.target.result);
+
+            // Add cluster info to nodes
+            data.nodes.forEach((node) => {
+              node.cluster = getCluster(node.file);
+            });
+
+            rawData = data;
+            updateGraph();
+          } catch (err) {
+            alert("Error parsing JSON: " + err.message);
+          }
+        };
+        reader.readAsText(file);
+      });
+
+      // Control event listeners
+      document
+        .getElementById("cluster-toggle")
+        .addEventListener("change", updateGraph);
+      document
+        .getElementById("labels-toggle")
+        .addEventListener("change", () =>
+          graph.nodeCanvasObject(graph.nodeCanvasObject()),
+        );
+      document
+        .getElementById("arrows-toggle")
+        .addEventListener("change", updateGraph);
+      document
+        .getElementById("cluster-strength")
+        .addEventListener("input", updateGraph);
+      document
+        .getElementById("link-distance")
+        .addEventListener("input", updateGraph);
+      document
+        .getElementById("charge-strength")
+        .addEventListener("input", updateGraph);
+
+      // Type filters
+      document.querySelectorAll(".type-filter").forEach((cb) => {
+        cb.addEventListener("change", updateGraph);
+      });
+      document
+        .getElementById("select-all-types")
+        .addEventListener("click", () => {
+          document
+            .querySelectorAll(".type-filter")
+            .forEach((cb) => (cb.checked = true));
+          updateGraph();
+        });
+      document
+        .getElementById("select-none-types")
+        .addEventListener("click", () => {
+          document
+            .querySelectorAll(".type-filter")
+            .forEach((cb) => (cb.checked = false));
+          updateGraph();
+        });
+
+      // Cluster filters
+      document.querySelectorAll(".cluster-filter").forEach((cb) => {
+        cb.addEventListener("change", updateGraph);
+      });
+      document
+        .getElementById("select-all-clusters")
+        .addEventListener("click", () => {
+          document
+            .querySelectorAll(".cluster-filter")
+            .forEach((cb) => (cb.checked = true));
+          updateGraph();
+        });
+      document
+        .getElementById("select-none-clusters")
+        .addEventListener("click", () => {
+          document
+            .querySelectorAll(".cluster-filter")
+            .forEach((cb) => (cb.checked = false));
+          updateGraph();
+        });
+
+      // Handle resize
+      window.addEventListener("resize", () => {
+        width = window.innerWidth;
+        height = window.innerHeight;
+        clusterCenters = getClusterCenters();
+        graph.width(width).height(height);
+        if (rawData) {
+          applyClusterForces();
+          graph.d3ReheatSimulation();
+        }
+      });
+    </script>
+  </body>
+</html>

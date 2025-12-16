@@ -15,6 +15,8 @@ pub enum Commands {
     Query(QueryArgs),
     /// Lists all unused entities in the nx project
     Unused(UnusedArgs),
+    /// Outputs the dependency graph as JSON (D3.js compatible)
+    Graph(GraphArgs),
 }
 
 #[derive(Args, Debug)]
@@ -33,6 +35,12 @@ pub struct QueryAllArgs {
 
 #[derive(Args, Debug)]
 pub struct UnusedArgs {
+    /// Path to the root of the nx project
+    pub path: String,
+}
+
+#[derive(Args, Debug)]
+pub struct GraphArgs {
     /// Path to the root of the nx project
     pub path: String,
 }

@@ -1,4 +1,5 @@
 mod entity;
+mod graph;
 mod parser;
 mod scanner;
 
@@ -9,6 +10,7 @@ use std::rc::Rc;
 use anyhow::Result;
 
 use entity::{Entity, EntityType};
+use graph::DependencyGraph;
 use parser::Parser;
 use scanner::Scanner;
 
@@ -169,6 +171,13 @@ pub fn unused(root_path: &Path) -> Result<()> {
     );
 
     Ok(())
+}
+
+pub fn graph_json(root_path: &Path) -> Result<String> {
+    let result = scan_and_parse_files(root_path, false)?;
+    let graph = DependencyGraph::from_entities(&result.entities);
+    let json = graph.to_json()?;
+    Ok(json)
 }
 
 #[cfg(test)]

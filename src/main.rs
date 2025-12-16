@@ -34,6 +34,14 @@ fn main() -> Result<()> {
             nxalyzer::unused(&path)
                 .with_context(|| format!("Unable to find unused entities in path: {}", path.display()))?
         }
+        Commands::Graph(args) => {
+            let path = canonicalize_path(&args.path)?;
+
+            let json = nxalyzer::graph_json(&path)
+                .with_context(|| format!("Unable to generate graph for path: {}", path.display()))?;
+
+            println!("{}", json);
+        }
     }
 
     Ok(())
