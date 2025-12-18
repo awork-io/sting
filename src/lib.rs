@@ -1,15 +1,17 @@
 mod entity;
+mod git;
 mod graph;
 mod parser;
 mod scanner;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::rc::Rc;
 
 use anyhow::Result;
 
 use entity::{Entity, EntityType};
+use git::{ChangeType, ChangedFile, get_changed_files};
 use graph::DependencyGraph;
 use parser::Parser;
 use scanner::Scanner;
@@ -29,7 +31,10 @@ fn scan_and_parse_files(root_path: &Path, verbose: bool) -> Result<ScanResult> {
 
         if !full_path.exists() {
             if verbose {
-                eprintln!("Warning: Directory {:?} does not exist, skipping...", full_path);
+                eprintln!(
+                    "Warning: Directory {:?} does not exist, skipping...",
+                    full_path
+                );
             }
             continue;
         }
@@ -180,9 +185,157 @@ pub fn graph_json(root_path: &Path) -> Result<String> {
     Ok(json)
 }
 
+pub fn affected(
+    root_path: &Path,
+    base_ref: &str,
+    transitive: bool,
+    paths_only: bool,
+) -> Result<()> {
+    if !paths_only {
+        println!("Analyzing changes between HEAD and '{}'...\n", base_ref);
+    }
+
+    let changed_files = get_changed_files(root_path, base_ref)?;
+
+    if changed_files.is_empty() {
+        if !paths_only {
+            println!("No changes found between HEAD and '{}'.", base_ref);
+        }
+        return Ok(());
+    }
+
+    if !paths_only {
+        println!("Changed files ({}):", changed_files.len());
+        for cf in &changed_files {
+            println!("  [{}] {}", cf.change_type, cf.path);
+        }
+        println!();
+    }
+
+    let result = scan_and_parse_files(root_path, false)?;
+
+    let graph = DependencyGraph::from_entities(&result.entities);
+
+    let changed_paths: HashSet<String> = changed_files.iter().map(|cf| cf.path.clone()).collect();
+
+    let mut direct_affected: Vec<(&Entity, &ChangedFile)> = Vec::new();
+    let mut direct_affected_ids: HashSet<String> = HashSet::new();
+
+    for entity in result.entities.values() {
+        if changed_paths.contains(&entity.file_path) {
+            if let Some(cf) = changed_files.iter().find(|cf| cf.path == entity.file_path) {
+                direct_affected.push((entity, cf));
+                direct_affected_ids.insert(entity.id.clone());
+            }
+        }
+    }
+
+    direct_affected.sort_by(|a, b| a.0.file_path.cmp(&b.0.file_path));
+
+    let consumer_ids = graph.find_consumers(&direct_affected_ids, transitive);
+
+    let mut consumers: Vec<(&Entity, String)> = Vec::new();
+    for consumer_id in &consumer_ids {
+        if let Some(entity) = result.entities.get(consumer_id) {
+            let consumes: Vec<String> = entity
+                .deps
+                .iter()
+                .filter_map(|dep| {
+                    for (affected_entity, _) in &direct_affected {
+                        if affected_entity.file_path == dep.path && affected_entity.name == dep.name
+                        {
+                            return Some(affected_entity.name.clone());
+                        }
+                    }
+                    None
+                })
+                .collect();
+
+            let reason = if consumes.is_empty() {
+                "Transitive dependency".to_string()
+            } else {
+                format!("Imports: {}", consumes.join(", "))
+            };
+
+            consumers.push((entity, reason));
+        }
+    }
+
+    consumers.sort_by(|a, b| a.0.file_path.cmp(&b.0.file_path));
+
+    if paths_only {
+        let mut unique_dirs: HashSet<String> = HashSet::new();
+
+        for (entity, _) in &direct_affected {
+            if let Some(parent) = Path::new(&entity.file_path).parent() {
+                unique_dirs.insert(parent.to_string_lossy().to_string());
+            }
+        }
+
+        for (entity, _) in &consumers {
+            if let Some(parent) = Path::new(&entity.file_path).parent() {
+                unique_dirs.insert(parent.to_string_lossy().to_string());
+            }
+        }
+
+        let mut sorted_dirs: Vec<_> = unique_dirs.into_iter().collect();
+        sorted_dirs.sort();
+
+        for dir in sorted_dirs {
+            println!("{}", dir);
+        }
+    } else {
+        println!("---");
+        println!("Directly affected entities ({}):\n", direct_affected.len());
+
+        for (entity, cf) in &direct_affected {
+            print_affected_entity(
+                entity,
+                &format!("{} file", change_type_to_reason(&cf.change_type)),
+            );
+        }
+
+        if !consumers.is_empty() {
+            println!("Consumer entities ({}):\n", consumers.len());
+
+            for (entity, reason) in &consumers {
+                print_affected_entity(entity, reason);
+            }
+        }
+
+        let total = direct_affected.len() + consumers.len();
+        println!(
+            "Summary: {} changed files, {} direct, {} consumers, {} total affected",
+            changed_files.len(),
+            direct_affected.len(),
+            consumers.len(),
+            total
+        );
+    }
+
+    Ok(())
+}
+
+fn change_type_to_reason(change_type: &ChangeType) -> &'static str {
+    match change_type {
+        ChangeType::Added => "New",
+        ChangeType::Modified => "Modified",
+        ChangeType::Deleted => "Deleted",
+        ChangeType::Renamed => "Renamed",
+    }
+}
+
+fn print_affected_entity(entity: &Entity, reason: &str) {
+    println!("Name: {}", entity.name);
+    println!("Type: {}", entity.entity_type);
+    println!("File: {}", entity.file_path);
+    println!("Reason: {}", reason);
+    println!("---");
+}
+
 #[cfg(test)]
 mod tests {
-    use super::parser::{strip_comments, Parser};
+    use super::parser::{Parser, strip_comments};
     use std::path::Path;
 
     #[test]

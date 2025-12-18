@@ -17,6 +17,8 @@ pub enum Commands {
     Unused(UnusedArgs),
     /// Outputs the dependency graph as JSON (D3.js compatible)
     Graph(GraphArgs),
+    /// Lists all entities affected by git changes compared to a base reference
+    Affected(AffectedArgs),
 }
 
 #[derive(Args, Debug)]
@@ -43,4 +45,19 @@ pub struct UnusedArgs {
 pub struct GraphArgs {
     /// Path to the root of the nx project
     pub path: String,
+}
+
+#[derive(Args, Debug)]
+pub struct AffectedArgs {
+    /// Path to the root of the nx project
+    pub path: String,
+    /// Git reference to compare against (branch, tag, or commit SHA)
+    #[arg(long)]
+    pub base: String,
+    /// Include transitive consumers (multi-hop dependency traversal)
+    #[arg(long, default_value = "false")]
+    pub transitive: bool,
+    /// Output only unique directory paths (without filenames) for use with test runners
+    #[arg(long, default_value = "false")]
+    pub paths: bool,
 }

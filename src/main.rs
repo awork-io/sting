@@ -31,16 +31,30 @@ fn main() -> Result<()> {
         Commands::Unused(args) => {
             let path = canonicalize_path(&args.path)?;
 
-            nxalyzer::unused(&path)
-                .with_context(|| format!("Unable to find unused entities in path: {}", path.display()))?
+            nxalyzer::unused(&path).with_context(|| {
+                format!("Unable to find unused entities in path: {}", path.display())
+            })?
         }
         Commands::Graph(args) => {
             let path = canonicalize_path(&args.path)?;
 
-            let json = nxalyzer::graph_json(&path)
-                .with_context(|| format!("Unable to generate graph for path: {}", path.display()))?;
+            let json = nxalyzer::graph_json(&path).with_context(|| {
+                format!("Unable to generate graph for path: {}", path.display())
+            })?;
 
             println!("{}", json);
+        }
+        Commands::Affected(args) => {
+            let path = canonicalize_path(&args.path)?;
+
+            nxalyzer::affected(&path, &args.base, args.transitive, args.paths).with_context(
+                || {
+                    format!(
+                        "Unable to find affected entities in path: {}",
+                        path.display()
+                    )
+                },
+            )?;
         }
     }
 

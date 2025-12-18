@@ -180,11 +180,10 @@ impl<'a> Parser<'a> {
             let names_str = &cap[1];
             let import_path = cap[2].to_string();
 
-            let resolved_path =
-                match resolve_import_path(file_path, &import_path, self.root_path) {
-                    Some(path) => path,
-                    None => continue,
-                };
+            let resolved_path = match resolve_import_path(file_path, &import_path, self.root_path) {
+                Some(path) => path,
+                None => continue,
+            };
 
             for name_part in names_str.split(',') {
                 let name_part = name_part.trim();
