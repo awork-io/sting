@@ -2,7 +2,7 @@ use clap::{Args, Parser, Subcommand};
 
 #[derive(Debug, Parser)]
 #[command(author, version, about, long_about = None)]
-pub struct NxalyzerArgs {
+pub struct StingArgs {
     #[command(subcommand)]
     pub command: Commands,
 }

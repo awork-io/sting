@@ -3,7 +3,7 @@ mod args;
 use std::path::Path;
 
 use anyhow::{Context, Result};
-use args::{Commands, NxalyzerArgs};
+use args::{Commands, StingArgs};
 use clap::Parser;
 
 fn canonicalize_path(path_str: &str) -> Result<std::path::PathBuf> {
@@ -13,32 +13,32 @@ fn canonicalize_path(path_str: &str) -> Result<std::path::PathBuf> {
 }
 
 fn main() -> Result<()> {
-    let cli = NxalyzerArgs::parse();
+    let cli = StingArgs::parse();
 
     match &cli.command {
         Commands::QueryAll(args) => {
             let path = canonicalize_path(&args.path)?;
 
-            nxalyzer::query_all(&path)
+            sting::query_all(&path)
                 .with_context(|| format!("Unable to query in path: {}", path.display()))?
         }
         Commands::Query(args) => {
             let path = canonicalize_path(&args.path)?;
 
-            nxalyzer::query(&path, &args.query)
+            sting::query(&path, &args.query)
                 .with_context(|| format!("Unable to query in path: {}", path.display()))?
         }
         Commands::Unused(args) => {
             let path = canonicalize_path(&args.path)?;
 
-            nxalyzer::unused(&path).with_context(|| {
+            sting::unused(&path).with_context(|| {
                 format!("Unable to find unused entities in path: {}", path.display())
             })?
         }
         Commands::Graph(args) => {
             let path = canonicalize_path(&args.path)?;
 
-            let json = nxalyzer::graph_json(&path).with_context(|| {
+            let json = sting::graph_json(&path).with_context(|| {
                 format!("Unable to generate graph for path: {}", path.display())
             })?;
 
@@ -47,7 +47,7 @@ fn main() -> Result<()> {
         Commands::Affected(args) => {
             let path = canonicalize_path(&args.path)?;
 
-            nxalyzer::affected(&path, &args.base, args.transitive, args.paths).with_context(
+            sting::affected(&path, &args.base, args.transitive, args.paths).with_context(
                 || {
                     format!(
                         "Unable to find affected entities in path: {}",
