@@ -47,7 +47,7 @@ fn main() -> Result<()> {
         Commands::Affected(args) => {
             let path = canonicalize_path(&args.path)?;
 
-            sting::affected(&path, &args.base, args.transitive, args.paths).with_context(
+            sting::affected(&path, &args.base, args.transitive, args.paths, args.tests).with_context(
                 || {
                     format!(
                         "Unable to find affected entities in path: {}",

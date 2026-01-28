@@ -58,6 +58,9 @@ pub struct AffectedArgs {
     #[arg(long, default_value = "false")]
     pub transitive: bool,
     /// Output only unique directory paths (without filenames) for use with test runners
-    #[arg(long, default_value = "false")]
+    #[arg(long, default_value = "false", conflicts_with = "tests")]
     pub paths: bool,
+    /// Output full paths to test files related to affected entities
+    #[arg(long, default_value = "false", conflicts_with = "paths")]
+    pub tests: bool,
 }

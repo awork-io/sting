@@ -5,6 +5,7 @@ mod parser;
 mod scanner;
 
 use std::collections::{HashMap, HashSet};
+use std::fs;
 use std::path::Path;
 use std::rc::Rc;
 
@@ -15,6 +16,38 @@ use git::{ChangeType, ChangedFile, get_changed_files};
 use graph::DependencyGraph;
 use parser::Parser;
 use scanner::Scanner;
+
+fn is_test_file(path: &str) -> bool {
+    path.ends_with(".test.ts") || path.ends_with(".spec.ts")
+}
+
+fn find_test_files_in_directories(directories: &HashSet<String>) -> Vec<String> {
+    let mut test_files: HashSet<String> = HashSet::new();
+
+    for dir_path in directories {
+        let dir = Path::new(dir_path);
+        if !dir.is_dir() {
+            continue;
+        }
+
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_file() {
+                    if let Some(path_str) = path.to_str() {
+                        if is_test_file(path_str) {
+                            test_files.insert(path_str.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let mut sorted: Vec<String> = test_files.into_iter().collect();
+    sorted.sort();
+    sorted
+}
 
 struct ScanResult {
     entities: HashMap<String, Entity>,
@@ -190,21 +223,22 @@ pub fn affected(
     base_ref: &str,
     transitive: bool,
     paths_only: bool,
+    tests_only: bool,
 ) -> Result<()> {
-    if !paths_only {
+    if !paths_only && !tests_only {
         println!("Analyzing changes between HEAD and '{}'...\n", base_ref);
     }
 
     let changed_files = get_changed_files(root_path, base_ref)?;
 
     if changed_files.is_empty() {
-        if !paths_only {
+        if !paths_only && !tests_only {
             println!("No changes found between HEAD and '{}'.", base_ref);
         }
         return Ok(());
     }
 
-    if !paths_only {
+    if !paths_only && !tests_only {
         println!("Changed files ({}):", changed_files.len());
         for cf in &changed_files {
             println!("  [{}] {}", cf.change_type, cf.path);
@@ -262,6 +296,48 @@ pub fn affected(
     }
 
     consumers.sort_by(|a, b| a.0.file_path.cmp(&b.0.file_path));
+
+    if tests_only {
+        let mut test_files: HashSet<String> = HashSet::new();
+
+        // Collect directories from directly affected entities
+        let mut affected_dirs: HashSet<String> = HashSet::new();
+        for (entity, _) in &direct_affected {
+            if let Some(parent) = Path::new(&entity.file_path).parent() {
+                affected_dirs.insert(parent.to_string_lossy().to_string());
+            }
+        }
+
+        // Collect directories from consumer entities
+        for (entity, _) in &consumers {
+            if let Some(parent) = Path::new(&entity.file_path).parent() {
+                affected_dirs.insert(parent.to_string_lossy().to_string());
+            }
+        }
+
+        // Find test files in those directories
+        let discovered_tests = find_test_files_in_directories(&affected_dirs);
+        for test_path in discovered_tests {
+            test_files.insert(test_path);
+        }
+
+        // Include test files that were directly changed in the git diff
+        for cf in &changed_files {
+            if is_test_file(&cf.path) {
+                test_files.insert(cf.path.clone());
+            }
+        }
+
+        // Output sorted test file paths
+        let mut sorted_tests: Vec<String> = test_files.into_iter().collect();
+        sorted_tests.sort();
+
+        for test_path in sorted_tests {
+            println!("{}", test_path);
+        }
+
+        return Ok(());
+    }
 
     if paths_only {
         let mut unique_dirs: HashSet<String> = HashSet::new();
@@ -653,5 +729,66 @@ import { Bar } from './bar';"#;
 
         assert_eq!(imports.len(), 1);
         assert_eq!(imports[0].name, "UsersModule");
+    }
+
+    #[test]
+    fn test_is_test_file_spec_ts() {
+        assert!(super::is_test_file("/path/to/foo.spec.ts"));
+        assert!(super::is_test_file("foo.spec.ts"));
+    }
+
+    #[test]
+    fn test_is_test_file_test_ts() {
+        assert!(super::is_test_file("/path/to/foo.test.ts"));
+        assert!(super::is_test_file("foo.test.ts"));
+    }
+
+    #[test]
+    fn test_is_test_file_non_test_files() {
+        assert!(!super::is_test_file("/path/to/foo.ts"));
+        assert!(!super::is_test_file("/path/to/foo.spec.tsx"));
+        assert!(!super::is_test_file("/path/to/foo.test.tsx"));
+        assert!(!super::is_test_file("/path/to/spec.ts.bak"));
+    }
+
+    #[test]
+    fn test_find_test_files_in_directories() {
+        use std::collections::HashSet;
+        use std::fs::{self, File};
+
+        // Create a temp directory with test files
+        let temp_dir = std::env::temp_dir().join("sting_test_find_tests");
+        let _ = fs::remove_dir_all(&temp_dir);
+        fs::create_dir_all(&temp_dir).unwrap();
+
+        // Create test files
+        File::create(temp_dir.join("foo.spec.ts")).unwrap();
+        File::create(temp_dir.join("bar.test.ts")).unwrap();
+        File::create(temp_dir.join("baz.ts")).unwrap();
+
+        let mut dirs: HashSet<String> = HashSet::new();
+        dirs.insert(temp_dir.to_string_lossy().to_string());
+
+        let result = super::find_test_files_in_directories(&dirs);
+
+        assert_eq!(result.len(), 2);
+        assert!(result.iter().any(|p| p.ends_with("foo.spec.ts")));
+        assert!(result.iter().any(|p| p.ends_with("bar.test.ts")));
+        assert!(!result.iter().any(|p| p.ends_with("baz.ts")));
+
+        // Cleanup
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_find_test_files_in_nonexistent_directory() {
+        use std::collections::HashSet;
+
+        let mut dirs: HashSet<String> = HashSet::new();
+        dirs.insert("/nonexistent/path/that/does/not/exist".to_string());
+
+        let result = super::find_test_files_in_directories(&dirs);
+
+        assert!(result.is_empty());
     }
 }
