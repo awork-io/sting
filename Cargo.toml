@@ -4,10 +4,10 @@ version = "0.1.5"
 edition = "2024"
 authors = ["Andres Osorio <af.osorio1341@gmail.com>"]
 license = "MIT"
-description = "A simple command line tool to analyze an nx project"
+description = "A simple command line tool to analyze an typescript project"
 readme = "README.md"
 repository = "https://github.com/anfelo/sting"
-keywords = ["cli", "nx", "command-line-utilities", "rust"]
+keywords = ["cli", "typescript", "command-line-utilities", "rust"]
 categories = ["command-line-utilities"]
 
 [dependencies]

@@ -9,11 +9,11 @@ pub struct StingArgs {
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
-    /// Queries different types of entities in a nx project
+    /// Queries different types of entities in a typescript project
     QueryAll(QueryAllArgs),
-    /// Queries different types of entities in a nx project
+    /// Queries different types of entities in a typescript project
     Query(QueryArgs),
-    /// Lists all unused entities in the nx project
+    /// Lists all unused entities in the typescript project
     Unused(UnusedArgs),
     /// Outputs the dependency graph as JSON (D3.js compatible)
     Graph(GraphArgs),
@@ -27,7 +27,7 @@ pub enum Commands {
 
 #[derive(Args, Debug)]
 pub struct QueryArgs {
-    /// Path to the root of the nx project
+    /// Path to the root of the typescript project
     pub path: String,
     /// Query string to filter entities by
     pub query: String,
@@ -35,25 +35,25 @@ pub struct QueryArgs {
 
 #[derive(Args, Debug)]
 pub struct QueryAllArgs {
-    /// Path to the root of the nx project
+    /// Path to the root of the typescript project
     pub path: String,
 }
 
 #[derive(Args, Debug)]
 pub struct UnusedArgs {
-    /// Path to the root of the nx project
+    /// Path to the root of the typescript project
     pub path: String,
 }
 
 #[derive(Args, Debug)]
 pub struct GraphArgs {
-    /// Path to the root of the nx project
+    /// Path to the root of the typescript project
     pub path: String,
 }
 
 #[derive(Args, Debug)]
 pub struct AffectedArgs {
-    /// Path to the root of the nx project
+    /// Path to the root of the typescript project
     pub path: String,
     /// Git reference to compare against (branch, tag, or commit SHA)
     #[arg(long)]
@@ -71,7 +71,7 @@ pub struct AffectedArgs {
 
 #[derive(Args, Debug)]
 pub struct ChainArgs {
-    /// Path to the root of the nx project
+    /// Path to the root of the typescript project
     pub path: String,
     /// Starting entity name to find chain from
     #[arg(long)]
@@ -92,7 +92,7 @@ pub struct ChainArgs {
 
 #[derive(Args, Debug)]
 pub struct CyclesArgs {
-    /// Path to the root of the nx project
+    /// Path to the root of the typescript project
     pub path: String,
     /// Maximum number of cycles to report (default: 100)
     #[arg(long, default_value = "100")]
