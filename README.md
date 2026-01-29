@@ -8,7 +8,7 @@ A fast CLI for static analysis of Typescript project.
 
 ## Why Sting?
 
-- **Fast** - Faster alternative to `nx affected`
+- **Fast** - Faster alternative to `sting affected`
 - **Static analysis** - Finds issues invisible to linters
 - **AI-friendly** - Designed for use with AI tools to reduce context
 
