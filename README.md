@@ -2,9 +2,9 @@
 
 ![Sting](sting.jpg)
 
-> Bilbo's blade that glows blue when enemies are near. Detects problems in your Nx monorepo.
+> Bilbo's blade that glows blue when enemies are near. Detects problems in a FE project.
 
-A fast CLI for static analysis of Nx TypeScript projects.
+A fast CLI for static analysis of Typescript project.
 
 ## Why Sting?
 
@@ -43,6 +43,9 @@ sting affected <path>      # List affected files (git-based)
 ## Status
 
 Experimental - APIs may change.
+
+### Suported
+- Angular app with a NX style monorepo
 
 ## License
 
