@@ -81,6 +81,10 @@ sting affected ./my-project --base main --paths
 
 # Output full paths to test files
 sting affected ./my-project --base main --tests
+
+# Filter by project type (web, mobile, or libs)
+sting affected ./my-project --base main --project web
+sting affected ./my-project --base main --project libs --tests
 ```
 
 **Options:**
@@ -88,6 +92,7 @@ sting affected ./my-project --base main --tests
 - `--transitive` - Include transitive consumers (multi-hop dependency traversal)
 - `--paths` - Output only unique directory paths (without filenames)
 - `--tests` - Output full paths to test files related to affected entities
+- `--project` - Filter results by project type: `web`, `mobile`, or `libs`
 
 ### chain
 
