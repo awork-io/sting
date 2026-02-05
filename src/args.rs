@@ -1,4 +1,11 @@
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
+
+#[derive(Clone, Debug, ValueEnum)]
+pub enum ProjectType {
+    Web,
+    Mobile,
+    Libs,
+}
 
 #[derive(Debug, Parser)]
 #[command(author, version, about, long_about = None)]
@@ -67,6 +74,9 @@ pub struct AffectedArgs {
     /// Output full paths to test files related to affected entities
     #[arg(long, default_value = "false", conflicts_with = "paths")]
     pub tests: bool,
+    /// Filter results to a specific project type (web, mobile, or libs)
+    #[arg(long, value_enum)]
+    pub project: Option<ProjectType>,
 }
 
 #[derive(Args, Debug)]

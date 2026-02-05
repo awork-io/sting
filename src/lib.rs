@@ -218,12 +218,20 @@ pub fn graph_json(root_path: &Path) -> Result<String> {
     Ok(json)
 }
 
+fn matches_project_filter(file_path: &str, project_filter: Option<&str>) -> bool {
+    match project_filter {
+        None => true,
+        Some(pattern) => file_path.contains(pattern),
+    }
+}
+
 pub fn affected(
     root_path: &Path,
     base_ref: &str,
     transitive: bool,
     paths_only: bool,
     tests_only: bool,
+    project_filter: Option<&str>,
 ) -> Result<()> {
     if !paths_only && !tests_only {
         println!("Analyzing changes between HEAD and '{}'...\n", base_ref);
@@ -256,7 +264,9 @@ pub fn affected(
     let mut direct_affected_ids: HashSet<String> = HashSet::new();
 
     for entity in result.entities.values() {
-        if changed_paths.contains(&entity.file_path) {
+        if changed_paths.contains(&entity.file_path)
+            && matches_project_filter(&entity.file_path, project_filter)
+        {
             if let Some(cf) = changed_files.iter().find(|cf| cf.path == entity.file_path) {
                 direct_affected.push((entity, cf));
                 direct_affected_ids.insert(entity.id.clone());
@@ -271,6 +281,9 @@ pub fn affected(
     let mut consumers: Vec<(&Entity, String)> = Vec::new();
     for consumer_id in &consumer_ids {
         if let Some(entity) = result.entities.get(consumer_id) {
+            if !matches_project_filter(&entity.file_path, project_filter) {
+                continue;
+            }
             let consumes: Vec<String> = entity
                 .deps
                 .iter()
@@ -323,7 +336,7 @@ pub fn affected(
 
         // Include test files that were directly changed in the git diff
         for cf in &changed_files {
-            if is_test_file(&cf.path) {
+            if is_test_file(&cf.path) && matches_project_filter(&cf.path, project_filter) {
                 test_files.insert(cf.path.clone());
             }
         }

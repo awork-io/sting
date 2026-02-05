@@ -47,14 +47,26 @@ fn main() -> Result<()> {
         Commands::Affected(args) => {
             let path = canonicalize_path(&args.path)?;
 
-            sting::affected(&path, &args.base, args.transitive, args.paths, args.tests).with_context(
-                || {
-                    format!(
-                        "Unable to find affected entities in path: {}",
-                        path.display()
-                    )
-                },
-            )?;
+            let project_filter = args.project.as_ref().map(|p| match p {
+                args::ProjectType::Web => "apps/web/",
+                args::ProjectType::Mobile => "apps/mobile/",
+                args::ProjectType::Libs => "libs/",
+            });
+
+            sting::affected(
+                &path,
+                &args.base,
+                args.transitive,
+                args.paths,
+                args.tests,
+                project_filter,
+            )
+            .with_context(|| {
+                format!(
+                    "Unable to find affected entities in path: {}",
+                    path.display()
+                )
+            })?;
         }
         Commands::Chain(args) => {
             let path = canonicalize_path(&args.path)?;
