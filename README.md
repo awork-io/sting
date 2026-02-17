@@ -62,8 +62,16 @@ sting unused ./my-project
 Output the dependency graph as JSON (D3.js compatible format).
 
 ```sh
+# Output full dependency graph
 sting graph ./my-project > deps.json
+
+# Filter to specific entity types
+sting graph ./my-project --entity-type component
+sting graph ./my-project --entity-type component,service,directive,pipe
 ```
+
+**Options:**
+- `--entity-type` - Filter to specific entity types (comma-separated). See [Entity Types](#entity-types) for available values.
 
 ### affected
 
@@ -137,6 +145,50 @@ sting cycles ./my-project --max-depth 5
 **Options:**
 - `--max-cycles` - Maximum number of cycles to report (default: 100)
 - `--max-depth` - Maximum cycle length to detect (default: 10)
+
+### rank
+
+Rank entities by various metrics. Useful for identifying components with the most or fewest dependencies.
+
+```sh
+# Rank all entities by dependency count (least to most)
+sting rank ./my-project --by deps
+
+# Rank only components
+sting rank ./my-project --by deps --entity-type component
+
+# Rank services and directives
+sting rank ./my-project --by deps --entity-type service,directive
+```
+
+**Output format** (tab-separated):
+```
+0	SimpleComponent	component	/path/to/simple.component.ts
+1	ButtonComponent	component	/path/to/button.component.ts
+3	FormComponent	component	/path/to/form.component.ts
+```
+
+**Options:**
+- `--by` - What to rank by. Currently supports: `deps` (dependency count)
+- `--entity-type` - Filter to specific entity types (comma-separated). See [Entity Types](#entity-types) for available values.
+
+## Entity Types
+
+Sting detects the following entity types in TypeScript/Angular projects:
+
+| Type | Description |
+|------|-------------|
+| `class` | Plain classes (no Angular decorator) |
+| `component` | Classes decorated with `@Component` |
+| `service` | Classes decorated with `@Injectable` |
+| `directive` | Classes decorated with `@Directive` |
+| `pipe` | Classes decorated with `@Pipe` |
+| `enum` | Exported enums |
+| `type` | Exported type aliases |
+| `interface` | Exported interfaces |
+| `function` | Exported functions |
+| `const` | Exported constants |
+| `worker` | Web Workers (`.worker.ts` files) |
 
 ## Status
 

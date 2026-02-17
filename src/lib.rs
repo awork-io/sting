@@ -211,9 +211,23 @@ pub fn unused(root_path: &Path) -> Result<()> {
     Ok(())
 }
 
-pub fn graph_json(root_path: &Path) -> Result<String> {
+pub fn graph_json(root_path: &Path, entity_type_filters: &[String]) -> Result<String> {
     let result = scan_and_parse_files(root_path, false)?;
-    let graph = DependencyGraph::from_entities(&result.entities);
+
+    let filtered_entities = if entity_type_filters.is_empty() {
+        result.entities
+    } else {
+        result
+            .entities
+            .into_iter()
+            .filter(|(_, entity)| {
+                let type_str = entity.entity_type.to_string();
+                entity_type_filters.contains(&type_str)
+            })
+            .collect()
+    };
+
+    let graph = DependencyGraph::from_entities(&filtered_entities);
     let json = graph.to_json()?;
     Ok(json)
 }
@@ -549,6 +563,53 @@ pub fn cycles(root_path: &Path, max_cycles: usize, max_depth: usize) -> Result<(
     }
 
     println!("\nSummary: {} cycles detected", cycles.len());
+
+    Ok(())
+}
+
+pub fn rank_by_deps(root_path: &Path, entity_type_filters: &[String]) -> Result<()> {
+    let result = scan_and_parse_files(root_path, false)?;
+
+    let filtered_entities = if entity_type_filters.is_empty() {
+        result.entities
+    } else {
+        result
+            .entities
+            .into_iter()
+            .filter(|(_, entity)| {
+                let type_str = entity.entity_type.to_string();
+                entity_type_filters.contains(&type_str)
+            })
+            .collect()
+    };
+
+    let graph = DependencyGraph::from_entities(&filtered_entities);
+
+    // Count outgoing edges (dependencies) per entity
+    let mut dep_counts: HashMap<String, usize> = HashMap::new();
+    for node in &graph.nodes {
+        dep_counts.insert(node.id.clone(), 0);
+    }
+    for edge in &graph.edges {
+        *dep_counts.entry(edge.source.clone()).or_insert(0) += 1;
+    }
+
+    // Build list of (count, node) and sort by count ascending
+    let mut ranked: Vec<(usize, &graph::GraphNode)> = graph
+        .nodes
+        .iter()
+        .map(|node| {
+            let count = dep_counts.get(&node.id).copied().unwrap_or(0);
+            (count, node)
+        })
+        .collect();
+
+    ranked.sort_by_key(|(count, node)| (*count, node.name.clone()));
+
+    // Output tab-separated: count, name, type, file
+    for (count, node) in ranked {
+        println!("{}\t{}\t{}\t{}", count, node.name, node.entity_type, node.file);
+    }
 
     Ok(())
 }

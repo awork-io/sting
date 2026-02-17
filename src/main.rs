@@ -38,7 +38,25 @@ fn main() -> Result<()> {
         Commands::Graph(args) => {
             let path = canonicalize_path(&args.path)?;
 
-            let json = sting::graph_json(&path).with_context(|| {
+            let entity_type_filters: Vec<String> = args
+                .entity_type
+                .iter()
+                .map(|t| match t {
+                    args::GraphEntityType::Class => "class".to_string(),
+                    args::GraphEntityType::Component => "component".to_string(),
+                    args::GraphEntityType::Service => "service".to_string(),
+                    args::GraphEntityType::Directive => "directive".to_string(),
+                    args::GraphEntityType::Pipe => "pipe".to_string(),
+                    args::GraphEntityType::Enum => "enum".to_string(),
+                    args::GraphEntityType::Type => "type".to_string(),
+                    args::GraphEntityType::Interface => "interface".to_string(),
+                    args::GraphEntityType::Function => "function".to_string(),
+                    args::GraphEntityType::Const => "const".to_string(),
+                    args::GraphEntityType::Worker => "worker".to_string(),
+                })
+                .collect();
+
+            let json = sting::graph_json(&path, &entity_type_filters).with_context(|| {
                 format!("Unable to generate graph for path: {}", path.display())
             })?;
 
@@ -86,6 +104,34 @@ fn main() -> Result<()> {
 
             sting::cycles(&path, args.max_cycles, args.max_depth)
                 .with_context(|| format!("Unable to detect cycles in path: {}", path.display()))?;
+        }
+        Commands::Rank(args) => {
+            let path = canonicalize_path(&args.path)?;
+
+            let entity_type_filters: Vec<String> = args
+                .entity_type
+                .iter()
+                .map(|t| match t {
+                    args::GraphEntityType::Class => "class".to_string(),
+                    args::GraphEntityType::Component => "component".to_string(),
+                    args::GraphEntityType::Service => "service".to_string(),
+                    args::GraphEntityType::Directive => "directive".to_string(),
+                    args::GraphEntityType::Pipe => "pipe".to_string(),
+                    args::GraphEntityType::Enum => "enum".to_string(),
+                    args::GraphEntityType::Type => "type".to_string(),
+                    args::GraphEntityType::Interface => "interface".to_string(),
+                    args::GraphEntityType::Function => "function".to_string(),
+                    args::GraphEntityType::Const => "const".to_string(),
+                    args::GraphEntityType::Worker => "worker".to_string(),
+                })
+                .collect();
+
+            match args.by {
+                args::RankBy::Deps => {
+                    sting::rank_by_deps(&path, &entity_type_filters)
+                        .with_context(|| format!("Unable to rank entities in path: {}", path.display()))?;
+                }
+            }
         }
     }
 

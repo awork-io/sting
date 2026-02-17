@@ -8,6 +8,10 @@ use serde::Serialize;
 pub(crate) enum EntityType {
     Unknown,
     Class,
+    Component,
+    Service,
+    Directive,
+    Pipe,
     Enum,
     Type,
     Interface,
@@ -21,6 +25,10 @@ impl std::fmt::Display for EntityType {
         match self {
             EntityType::Unknown => write!(f, "unknown"),
             EntityType::Class => write!(f, "class"),
+            EntityType::Component => write!(f, "component"),
+            EntityType::Service => write!(f, "service"),
+            EntityType::Directive => write!(f, "directive"),
+            EntityType::Pipe => write!(f, "pipe"),
             EntityType::Enum => write!(f, "enum"),
             EntityType::Type => write!(f, "type"),
             EntityType::Interface => write!(f, "interface"),

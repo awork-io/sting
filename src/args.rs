@@ -7,6 +7,27 @@ pub enum ProjectType {
     Libs,
 }
 
+#[derive(Clone, Debug, ValueEnum, PartialEq)]
+pub enum GraphEntityType {
+    Class,
+    Component,
+    Service,
+    Directive,
+    Pipe,
+    Enum,
+    Type,
+    Interface,
+    Function,
+    Const,
+    Worker,
+}
+
+#[derive(Clone, Debug, ValueEnum)]
+pub enum RankBy {
+    /// Rank by number of dependencies (outgoing edges)
+    Deps,
+}
+
 #[derive(Debug, Parser)]
 #[command(author, version, about, long_about = None)]
 pub struct StingArgs {
@@ -30,6 +51,8 @@ pub enum Commands {
     Chain(ChainArgs),
     /// Detects circular dependencies in the project
     Cycles(CyclesArgs),
+    /// Ranks entities by various metrics
+    Rank(RankArgs),
 }
 
 #[derive(Args, Debug)]
@@ -56,6 +79,9 @@ pub struct UnusedArgs {
 pub struct GraphArgs {
     /// Path to the root of the typescript project
     pub path: String,
+    /// Filter to specific entity types (comma-separated, e.g. class,interface)
+    #[arg(long, value_enum, value_delimiter = ',')]
+    pub entity_type: Vec<GraphEntityType>,
 }
 
 #[derive(Args, Debug)]
@@ -110,4 +136,16 @@ pub struct CyclesArgs {
     /// Maximum cycle length to detect (default: 10)
     #[arg(long, default_value = "10")]
     pub max_depth: usize,
+}
+
+#[derive(Args, Debug)]
+pub struct RankArgs {
+    /// Path to the root of the typescript project
+    pub path: String,
+    /// What to rank entities by
+    #[arg(long, value_enum)]
+    pub by: RankBy,
+    /// Filter to specific entity types (comma-separated, e.g. class,interface)
+    #[arg(long, value_enum, value_delimiter = ',')]
+    pub entity_type: Vec<GraphEntityType>,
 }

@@ -69,7 +69,10 @@ impl<'a> Parser<'a> {
         // Strip comments before parsing exports
         let content_without_comments = strip_comments(&content);
 
-        for line in content_without_comments.lines() {
+        // Collect lines for decorator detection (need to look backwards)
+        let lines: Vec<&str> = content_without_comments.lines().collect();
+
+        for (line_idx, line) in lines.iter().enumerate() {
             let trimmed = line.trim();
 
             if trimmed.is_empty() {
@@ -79,9 +82,12 @@ impl<'a> Parser<'a> {
             // Check for exported classes
             if trimmed.contains("export") && trimmed.contains("class") {
                 if let Some(name) = extract_export_name(trimmed, "class") {
+                    // Check for Angular decorators on preceding lines
+                    let entity_type =
+                        detect_angular_decorator(&lines, line_idx).unwrap_or(EntityType::Class);
                     entities.push(Entity::new(
                         name,
-                        EntityType::Class,
+                        entity_type,
                         file_path.to_string(),
                         Rc::clone(&deps),
                     ));
@@ -432,6 +438,50 @@ fn is_entity_used_locally(content: &str, entity_name: &str) -> bool {
 /// Checks if a file path is a worker file (ends with .worker.ts)
 fn is_worker_file(file_path: &str) -> bool {
     file_path.ends_with(".worker.ts")
+}
+
+/// Detects Angular decorators on lines preceding a class declaration.
+/// Returns the appropriate EntityType if a decorator is found.
+fn detect_angular_decorator(lines: &[&str], class_line_idx: usize) -> Option<EntityType> {
+    // Look backwards from the class line for decorator (max 30 lines)
+    let start_idx = class_line_idx.saturating_sub(30);
+
+    for i in (start_idx..class_line_idx).rev() {
+        let line = lines[i].trim();
+
+        // Skip empty lines
+        if line.is_empty() {
+            continue;
+        }
+
+        // Check for Angular decorators
+        if line.starts_with("@Component") {
+            return Some(EntityType::Component);
+        }
+        if line.starts_with("@Injectable") {
+            return Some(EntityType::Service);
+        }
+        if line.starts_with("@Directive") {
+            return Some(EntityType::Directive);
+        }
+        if line.starts_with("@Pipe") {
+            return Some(EntityType::Pipe);
+        }
+
+        // Stop if we hit an import/export statement (we've gone too far)
+        if line.starts_with("import ") || line.starts_with("export ") {
+            break;
+        }
+
+        // Stop if we hit a class/function/interface declaration
+        if line.contains("class ") || line.contains("function ") || line.contains("interface ") {
+            break;
+        }
+
+        // Otherwise continue looking (could be decorator params, other decorators, etc.)
+    }
+
+    None
 }
 
 /// Converts a worker filename to PascalCase + "Worker" suffix.
