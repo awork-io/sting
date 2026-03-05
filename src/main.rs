@@ -1,10 +1,12 @@
 mod args;
+mod skill_installer;
 
 use std::path::Path;
 
 use anyhow::{Context, Result};
-use args::{Commands, StingArgs};
+use args::{Commands, SkillCommands, StingArgs};
 use clap::Parser;
+use skill_installer::install_skill;
 
 fn canonicalize_path(path_str: &str) -> Result<std::path::PathBuf> {
     let path = Path::new(path_str);
@@ -128,11 +130,17 @@ fn main() -> Result<()> {
 
             match args.by {
                 args::RankBy::Deps => {
-                    sting::rank_by_deps(&path, &entity_type_filters)
-                        .with_context(|| format!("Unable to rank entities in path: {}", path.display()))?;
+                    sting::rank_by_deps(&path, &entity_type_filters).with_context(|| {
+                        format!("Unable to rank entities in path: {}", path.display())
+                    })?;
                 }
             }
         }
+        Commands::Skill(args) => match &args.command {
+            SkillCommands::Install(install_args) => {
+                install_skill(install_args.path.as_deref(), install_args.yes)?;
+            }
+        },
     }
 
     Ok(())

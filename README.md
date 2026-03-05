@@ -21,14 +21,39 @@ cargo install sting
 
 ### Script
 Use the `install.sh` script to install in your machine or download
-the binaries from the [releases](https://github.com/anfelo/sting/releases) list.
+the binaries from the [releases](https://github.com/awork-io/sting/releases) list.
 
 ```bash
-curl -LSfs https://anfelo.github.io/scripts/install.sh | \
-    sh -s -- --git anfelo/sting
+curl -LSfs https://raw.githubusercontent.com/awork-io/sting/main/install.sh | sh
 ```
 
-For more details about this installation script see install.sh -h
+For more details about this installation script see `install.sh -h`.
+
+## Claude Skill
+
+Install the bundled Sting skill file for Claude:
+
+```sh
+sting skill install
+```
+
+Install to a specific directory:
+
+```sh
+sting skill install --path ~/.claude/skills/sting
+```
+
+Install to a specific file path:
+
+```sh
+sting skill install --path ~/.claude/skills/sting/SKILL.md
+```
+
+Run non-interactively (uses default path `~/.claude/skills/sting/SKILL.md`):
+
+```sh
+sting skill install --yes
+```
 
 ## Commands
 
@@ -171,6 +196,28 @@ sting rank ./my-project --by deps --entity-type service,directive
 **Options:**
 - `--by` - What to rank by. Currently supports: `deps` (dependency count)
 - `--entity-type` - Filter to specific entity types (comma-separated). See [Entity Types](#entity-types) for available values.
+
+### skill install
+
+Install the bundled Claude skill file (`skills/sting/SKILL.md`) to your machine.
+
+```sh
+# Interactive prompt for destination path
+sting skill install
+
+# Install to a specific directory
+sting skill install --path ~/.claude/skills/sting
+
+# Install to a specific file path
+sting skill install --path ~/.claude/skills/sting/SKILL.md
+
+# Non-interactive (uses default path)
+sting skill install --yes
+```
+
+**Options:**
+- `--path` - Destination directory or full file path
+- `--yes` - Skip prompts and use default path when `--path` is not provided
 
 ## Entity Types
 

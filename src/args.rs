@@ -53,6 +53,30 @@ pub enum Commands {
     Cycles(CyclesArgs),
     /// Ranks entities by various metrics
     Rank(RankArgs),
+    /// Skill-related commands
+    Skill(SkillArgs),
+}
+
+#[derive(Args, Debug)]
+pub struct SkillArgs {
+    #[command(subcommand)]
+    pub command: SkillCommands,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum SkillCommands {
+    /// Installs the Sting Claude skill file
+    Install(SkillInstallArgs),
+}
+
+#[derive(Args, Debug)]
+pub struct SkillInstallArgs {
+    /// Destination path (directory or full SKILL.md path)
+    #[arg(long)]
+    pub path: Option<String>,
+    /// Skip prompts and use defaults when needed
+    #[arg(long, default_value = "false")]
+    pub yes: bool,
 }
 
 #[derive(Args, Debug)]
