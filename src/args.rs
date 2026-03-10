@@ -53,6 +53,10 @@ pub enum Commands {
     Cycles(CyclesArgs),
     /// Ranks entities by various metrics
     Rank(RankArgs),
+    /// Detects potential memory leaks by static analysis
+    MemLeaks(MemLeaksArgs),
+    /// Detects memory leaks in affected non-test files
+    AffectedMemLeaks(AffectedMemLeaksArgs),
     /// Skill-related commands
     Skill(SkillArgs),
 }
@@ -172,4 +176,37 @@ pub struct RankArgs {
     /// Filter to specific entity types (comma-separated, e.g. class,interface)
     #[arg(long, value_enum, value_delimiter = ',')]
     pub entity_type: Vec<GraphEntityType>,
+}
+
+#[derive(Args, Debug)]
+pub struct MemLeaksArgs {
+    /// Path to the root of the typescript project
+    pub path: String,
+    /// Filter to specific entity types (comma-separated, e.g. component,service)
+    #[arg(long, value_enum, value_delimiter = ',')]
+    pub entity_type: Vec<GraphEntityType>,
+    /// Maximum number of detailed findings to show per entity
+    #[arg(long, default_value = "5")]
+    pub max_findings: usize,
+}
+
+#[derive(Args, Debug)]
+pub struct AffectedMemLeaksArgs {
+    /// Path to the root of the typescript project
+    pub path: String,
+    /// Git reference to compare against (branch, tag, or commit SHA)
+    #[arg(long)]
+    pub base: String,
+    /// Include transitive consumers (multi-hop dependency traversal)
+    #[arg(long, default_value = "false")]
+    pub transitive: bool,
+    /// Filter results to a specific project type (web, mobile, or libs)
+    #[arg(long, value_enum)]
+    pub project: Option<ProjectType>,
+    /// Filter to specific entity types (comma-separated, e.g. component,service)
+    #[arg(long, value_enum, value_delimiter = ',')]
+    pub entity_type: Vec<GraphEntityType>,
+    /// Maximum number of detailed findings to show per entity
+    #[arg(long, default_value = "5")]
+    pub max_findings: usize,
 }

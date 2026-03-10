@@ -1,6 +1,7 @@
 mod entity;
 mod git;
 mod graph;
+mod mem_leaks;
 mod parser;
 mod scanner;
 
@@ -14,11 +15,12 @@ use anyhow::Result;
 use entity::{Entity, EntityType};
 use git::{ChangeType, ChangedFile, get_changed_files};
 use graph::DependencyGraph;
+use mem_leaks::analyze_and_print as analyze_mem_leaks_and_print;
 use parser::Parser;
 use scanner::Scanner;
 
 fn is_test_file(path: &str) -> bool {
-    path.ends_with(".test.ts") || path.ends_with(".spec.ts")
+    path.ends_with(".test.ts") || path.ends_with(".spec.ts") || path.ends_with(".e2e.ts")
 }
 
 fn find_test_files_in_directories(directories: &HashSet<String>) -> Vec<String> {
@@ -608,10 +610,99 @@ pub fn rank_by_deps(root_path: &Path, entity_type_filters: &[String]) -> Result<
 
     // Output tab-separated: count, name, type, file
     for (count, node) in ranked {
-        println!("{}\t{}\t{}\t{}", count, node.name, node.entity_type, node.file);
+        println!(
+            "{}\t{}\t{}\t{}",
+            count, node.name, node.entity_type, node.file
+        );
     }
 
     Ok(())
+}
+
+pub fn mem_leaks(
+    root_path: &Path,
+    entity_type_filters: &[String],
+    max_findings: usize,
+) -> Result<()> {
+    let result = scan_and_parse_files(root_path, false)?;
+    analyze_mem_leaks_and_print(&result.entities, entity_type_filters, max_findings)
+}
+
+pub fn affected_mem_leaks(
+    root_path: &Path,
+    base_ref: &str,
+    transitive: bool,
+    project_filter: Option<&str>,
+    entity_type_filters: &[String],
+    max_findings: usize,
+) -> Result<()> {
+    let changed_files = get_changed_files(root_path, base_ref)?;
+
+    if changed_files.is_empty() {
+        println!("No changes found between HEAD and '{}'.", base_ref);
+        return Ok(());
+    }
+
+    let result = scan_and_parse_files(root_path, false)?;
+    let graph = DependencyGraph::from_entities(&result.entities);
+
+    let changed_paths: HashSet<String> = changed_files.iter().map(|cf| cf.path.clone()).collect();
+
+    let mut direct_affected_ids: HashSet<String> = HashSet::new();
+    for entity in result.entities.values() {
+        if changed_paths.contains(&entity.file_path)
+            && matches_project_filter(&entity.file_path, project_filter)
+        {
+            direct_affected_ids.insert(entity.id.clone());
+        }
+    }
+
+    let consumer_ids = graph.find_consumers(&direct_affected_ids, transitive);
+
+    let mut affected_non_test_files: HashSet<String> = HashSet::new();
+    for entity in result.entities.values() {
+        let is_affected =
+            direct_affected_ids.contains(&entity.id) || consumer_ids.contains(&entity.id);
+        if is_affected
+            && matches_project_filter(&entity.file_path, project_filter)
+            && entity.file_path.ends_with(".ts")
+            && !is_test_file(&entity.file_path)
+        {
+            affected_non_test_files.insert(entity.file_path.clone());
+        }
+    }
+
+    println!(
+        "Affected non-test source files scanned: {}",
+        affected_non_test_files.len()
+    );
+
+    if affected_non_test_files.is_empty() {
+        println!("No affected non-test TypeScript files found.");
+        return Ok(());
+    }
+
+    let mut sorted_affected_files: Vec<String> = affected_non_test_files.iter().cloned().collect();
+    sorted_affected_files.sort();
+
+    println!("Showing first 10 affected files:");
+    for file_path in sorted_affected_files.iter().take(10) {
+        println!("{}", file_path);
+    }
+    if sorted_affected_files.len() > 10 {
+        println!(
+            "...and more ({} additional files)",
+            sorted_affected_files.len() - 10
+        );
+    }
+
+    let scoped_entities: HashMap<String, Entity> = result
+        .entities
+        .into_iter()
+        .filter(|(_, entity)| affected_non_test_files.contains(&entity.file_path))
+        .collect();
+
+    analyze_mem_leaks_and_print(&scoped_entities, entity_type_filters, max_findings)
 }
 
 fn print_affected_entity(entity: &Entity, reason: &str) {
@@ -624,7 +715,7 @@ fn print_affected_entity(entity: &Entity, reason: &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::parser::{worker_filename_to_entity_name, Parser, strip_comments};
+    use super::parser::{Parser, strip_comments, worker_filename_to_entity_name};
     use std::path::Path;
 
     #[test]
@@ -954,6 +1045,7 @@ import { Bar } from './bar';"#;
     fn test_is_test_file_test_ts() {
         assert!(super::is_test_file("/path/to/foo.test.ts"));
         assert!(super::is_test_file("foo.test.ts"));
+        assert!(super::is_test_file("/path/to/foo.e2e.ts"));
     }
 
     #[test]
@@ -961,6 +1053,7 @@ import { Bar } from './bar';"#;
         assert!(!super::is_test_file("/path/to/foo.ts"));
         assert!(!super::is_test_file("/path/to/foo.spec.tsx"));
         assert!(!super::is_test_file("/path/to/foo.test.tsx"));
+        assert!(!super::is_test_file("/path/to/foo.e2e.tsx"));
         assert!(!super::is_test_file("/path/to/spec.ts.bak"));
     }
 
@@ -1051,7 +1144,8 @@ import { Bar } from './bar';"#;
 
     #[test]
     fn test_extract_worker_import_with_ts_extension() {
-        let content = r#"const worker = new Worker(new URL('./my-worker.worker.ts', import.meta.url));"#;
+        let content =
+            r#"const worker = new Worker(new URL('./my-worker.worker.ts', import.meta.url));"#;
         let root_path = Path::new("/project");
         let file_path = "/project/src/index.ts";
 

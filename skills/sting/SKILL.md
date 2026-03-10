@@ -68,6 +68,21 @@ Use this skill when the user asks:
 - `sting rank <path> --by deps` - Rank entities by dependency count
 - `sting rank <path> --by deps --entity-type component,service` - Restrict ranking to entity types
 
+### Memory leak analysis
+
+- `sting mem-leaks <path>` - Detect potential memory leak risks by entity
+- `sting mem-leaks <path> --entity-type component,service` - Restrict leak analysis to entity types
+- `sting mem-leaks <path> --max-findings 3` - Limit detailed findings shown per entity
+- `sting affected-mem-leaks <path> --base <ref>` - Analyze leaks only in affected non-test files
+- `sting affected-mem-leaks <path> --base <ref> --transitive` - Include transitive consumers in affected set
+
+Behavior notes:
+- `mem-leaks` checks `setInterval` cleanup but intentionally ignores `setTimeout`
+- finite operators (`take(1)`, `first`, `last`, `single`, `takeWhile`) are treated as potential leak risk
+- `@AutoUnsubscribe(...)` is honored only when the subscription is provably tracked
+- API-call subscriptions are suppressed in conservative mode
+- `affected-mem-leaks` analyzes only non-test `.ts` files and prints the first 10 affected files with count
+
 ### Skill installation
 
 - `sting skill install` - Interactive installation of this skill
@@ -135,6 +150,25 @@ Use this skill when the user asks:
 - `--entity-type`: comma-separated values from:
   `class`, `component`, `service`, `directive`, `pipe`, `enum`,
   `type`, `interface`, `function`, `const`, `worker`
+
+### `mem-leaks`
+
+- `--entity-type`: comma-separated values from:
+  `class`, `component`, `service`, `directive`, `pipe`, `enum`,
+  `type`, `interface`, `function`, `const`, `worker`
+- `--max-findings <n>`: maximum number of detailed findings shown per entity (default `5`)
+
+### `affected-mem-leaks`
+
+- `--base <ref>` (required): branch, tag, or commit SHA to compare against
+- `--transitive`: include multi-hop consumers in the affected set
+- `--project <type>`: one of `web`, `mobile`, `libs`
+- `--entity-type`: comma-separated values from:
+  `class`, `component`, `service`, `directive`, `pipe`, `enum`,
+  `type`, `interface`, `function`, `const`, `worker`
+- `--max-findings <n>`: maximum number of detailed findings shown per entity (default `5`)
+- Scope: only non-test `.ts` files (`.spec.ts`, `.test.ts`, `.e2e.ts` excluded)
+- Output: shows total affected non-test files and first 10 file paths (`...and more` when applicable)
 
 ## Common pitfalls
 

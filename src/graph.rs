@@ -452,7 +452,12 @@ mod tests {
 
         // Create source entity that imports the target
         let import = ImportInfo::new("Helper".to_string(), "/src/helper.ts".to_string());
-        let source = create_entity("MyClass", EntityType::Class, "/src/my-class.ts", vec![import]);
+        let source = create_entity(
+            "MyClass",
+            EntityType::Class,
+            "/src/my-class.ts",
+            vec![import],
+        );
         let source_id = source.id.clone();
         entities.insert(source.id.clone(), source);
 
@@ -470,7 +475,12 @@ mod tests {
 
         // Create entity with import that doesn't resolve to any known entity
         let import = ImportInfo::new("ExternalLib".to_string(), "/external/lib.ts".to_string());
-        let entity = create_entity("MyClass", EntityType::Class, "/src/my-class.ts", vec![import]);
+        let entity = create_entity(
+            "MyClass",
+            EntityType::Class,
+            "/src/my-class.ts",
+            vec![import],
+        );
         entities.insert(entity.id.clone(), entity);
 
         let graph = DependencyGraph::from_entities(&entities);
@@ -525,7 +535,12 @@ mod tests {
         entities.insert(entity_b.id.clone(), entity_b);
 
         let import = ImportInfo::new("HelperB".to_string(), "/src/utils.ts".to_string());
-        let entity_a = create_entity("HelperA", EntityType::Function, "/src/utils.ts", vec![import]);
+        let entity_a = create_entity(
+            "HelperA",
+            EntityType::Function,
+            "/src/utils.ts",
+            vec![import],
+        );
         let entity_a_id = entity_a.id.clone();
         entities.insert(entity_a.id.clone(), entity_a);
 
@@ -565,7 +580,12 @@ mod tests {
         entities.insert(target.id.clone(), target);
 
         let import = ImportInfo::new("Helper".to_string(), "/src/helper.ts".to_string());
-        let source = create_entity("MyClass", EntityType::Class, "/src/my-class.ts", vec![import]);
+        let source = create_entity(
+            "MyClass",
+            EntityType::Class,
+            "/src/my-class.ts",
+            vec![import],
+        );
         entities.insert(source.id.clone(), source);
 
         let graph = DependencyGraph::from_entities(&entities);
@@ -591,11 +611,21 @@ mod tests {
 
         // Create two entities that import the target
         let import = ImportInfo::new("Helper".to_string(), "/src/helper.ts".to_string());
-        let consumer1 = create_entity("Service1", EntityType::Class, "/src/service1.ts", vec![import.clone()]);
+        let consumer1 = create_entity(
+            "Service1",
+            EntityType::Class,
+            "/src/service1.ts",
+            vec![import.clone()],
+        );
         let consumer1_id = consumer1.id.clone();
         entities.insert(consumer1.id.clone(), consumer1);
 
-        let consumer2 = create_entity("Service2", EntityType::Class, "/src/service2.ts", vec![import]);
+        let consumer2 = create_entity(
+            "Service2",
+            EntityType::Class,
+            "/src/service2.ts",
+            vec![import],
+        );
         let consumer2_id = consumer2.id.clone();
         entities.insert(consumer2.id.clone(), consumer2);
 
@@ -887,7 +917,12 @@ mod tests {
         entities.insert(entity_d.id.clone(), entity_d);
 
         let import_d = ImportInfo::new("D".to_string(), "/src/d.ts".to_string());
-        let entity_b = create_entity("B", EntityType::Function, "/src/b.ts", vec![import_d.clone()]);
+        let entity_b = create_entity(
+            "B",
+            EntityType::Function,
+            "/src/b.ts",
+            vec![import_d.clone()],
+        );
         let b_id = entity_b.id.clone();
         entities.insert(entity_b.id.clone(), entity_b);
 
@@ -897,7 +932,12 @@ mod tests {
 
         let import_b = ImportInfo::new("B".to_string(), "/src/b.ts".to_string());
         let import_c = ImportInfo::new("C".to_string(), "/src/c.ts".to_string());
-        let entity_a = create_entity("A", EntityType::Function, "/src/a.ts", vec![import_b, import_c]);
+        let entity_a = create_entity(
+            "A",
+            EntityType::Function,
+            "/src/a.ts",
+            vec![import_b, import_c],
+        );
         let a_id = entity_a.id.clone();
         entities.insert(entity_a.id.clone(), entity_a);
 
@@ -948,11 +988,21 @@ mod tests {
         entities.insert(entity_c.id.clone(), entity_c);
 
         let import_c = ImportInfo::new("C".to_string(), "/src/c.ts".to_string());
-        let entity_b = create_entity("B", EntityType::Function, "/src/b.ts", vec![import_c.clone()]);
+        let entity_b = create_entity(
+            "B",
+            EntityType::Function,
+            "/src/b.ts",
+            vec![import_c.clone()],
+        );
         entities.insert(entity_b.id.clone(), entity_b);
 
         let import_b = ImportInfo::new("B".to_string(), "/src/b.ts".to_string());
-        let entity_a = create_entity("A", EntityType::Function, "/src/a.ts", vec![import_b, import_c]);
+        let entity_a = create_entity(
+            "A",
+            EntityType::Function,
+            "/src/a.ts",
+            vec![import_b, import_c],
+        );
         let a_id = entity_a.id.clone();
         entities.insert(entity_a.id.clone(), entity_a);
 
@@ -977,7 +1027,12 @@ mod tests {
         entities.insert(entity_d.id.clone(), entity_d);
 
         let import_d = ImportInfo::new("D".to_string(), "/src/d.ts".to_string());
-        let entity_b = create_entity("B", EntityType::Function, "/src/b.ts", vec![import_d.clone()]);
+        let entity_b = create_entity(
+            "B",
+            EntityType::Function,
+            "/src/b.ts",
+            vec![import_d.clone()],
+        );
         entities.insert(entity_b.id.clone(), entity_b);
 
         let entity_c = create_entity("C", EntityType::Function, "/src/c.ts", vec![import_d]);
@@ -985,7 +1040,12 @@ mod tests {
 
         let import_b = ImportInfo::new("B".to_string(), "/src/b.ts".to_string());
         let import_c = ImportInfo::new("C".to_string(), "/src/c.ts".to_string());
-        let entity_a = create_entity("A", EntityType::Function, "/src/a.ts", vec![import_b, import_c]);
+        let entity_a = create_entity(
+            "A",
+            EntityType::Function,
+            "/src/a.ts",
+            vec![import_b, import_c],
+        );
         let a_id = entity_a.id.clone();
         entities.insert(entity_a.id.clone(), entity_a);
 

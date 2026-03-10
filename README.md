@@ -197,6 +197,65 @@ sting rank ./my-project --by deps --entity-type service,directive
 - `--by` - What to rank by. Currently supports: `deps` (dependency count)
 - `--entity-type` - Filter to specific entity types (comma-separated). See [Entity Types](#entity-types) for available values.
 
+### mem-leaks
+
+Detect potential memory leak risks with static analysis, grouped by entity.
+
+```sh
+# Analyze all entity types
+sting mem-leaks ./my-project
+
+# Filter to components and services
+sting mem-leaks ./my-project --entity-type component,service
+
+# Limit detailed findings shown per entity
+sting mem-leaks ./my-project --max-findings 3
+```
+
+**Output format** (tab-separated):
+```
+3	high	DashboardComponent	component	/path/to/dashboard.component.ts
+```
+
+**Current rule behavior:**
+- RxJS subscriptions without cleanup are reported, with conservative suppression for proven cleanup patterns
+- Finite RxJS operators like `take(1)`, `first()`, `last()`, `single()`, and `takeWhile()` are still treated as potential leak risk
+- `@AutoUnsubscribe(...)` suppresses only subscriptions that are provably tracked by the decorator config
+- API-call subscriptions are suppressed (for example service/API client/HTTP call subscriptions)
+- Timer checks include `setInterval` only (`setTimeout` is intentionally ignored)
+
+**Options:**
+- `--entity-type` - Filter to specific entity types (comma-separated). See [Entity Types](#entity-types) for available values.
+- `--max-findings` - Maximum number of detailed findings to show per entity (default: 5)
+
+### affected-mem-leaks
+
+Analyze memory leaks only in affected non-test TypeScript files.
+
+```sh
+# Analyze affected non-test files compared to origin/develop
+sting affected-mem-leaks ./my-project --base origin/develop
+
+# Include transitive consumers in the affected set
+sting affected-mem-leaks ./my-project --base origin/develop --transitive
+
+# Scope affected set to web project only
+sting affected-mem-leaks ./my-project --base origin/develop --project web
+```
+
+**Notes:**
+- Only non-test files are analyzed (`.ts`, excluding `.spec.ts`, `.test.ts`, `.e2e.ts`)
+- Output includes total affected non-test file count and a preview of the first 10 files
+- When more than 10 files are analyzed, output includes `...and more (N additional files)`
+- This command is informational (no CI-gating exit behavior on findings)
+
+**Options:**
+- `--base` - Git reference to compare against (branch, tag, or commit SHA)
+- `--transitive` - Include transitive consumers (multi-hop dependency traversal)
+- `--project` - Filter affected set by project type: `web`, `mobile`, or `libs`
+- `--entity-type` - Filter leak analysis to specific entity types (comma-separated)
+- `--max-findings` - Maximum number of detailed findings to show per entity (default: 5)
+
 ### skill install
 
 Install the bundled Claude skill file (`skills/sting/SKILL.md`) to your machine.

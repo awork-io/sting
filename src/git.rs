@@ -94,7 +94,11 @@ pub fn get_changed_files(repo_path: &Path, base_ref: &str) -> Result<Vec<Changed
     diff_opts.include_untracked(false);
 
     let diff = repo
-        .diff_tree_to_tree(Some(&merge_base_tree), Some(&head_tree), Some(&mut diff_opts))
+        .diff_tree_to_tree(
+            Some(&merge_base_tree),
+            Some(&head_tree),
+            Some(&mut diff_opts),
+        )
         .with_context(|| "Failed to compute diff between merge-base and HEAD")?;
 
     let mut changed_files = Vec::new();
@@ -140,14 +144,12 @@ mod tests {
     use std::fs;
     use tempfile::tempdir;
 
-    fn create_commit(
-        repo: &Repository,
-        message: &str,
-        parent: Option<&git2::Commit>,
-    ) -> git2::Oid {
+    fn create_commit(repo: &Repository, message: &str, parent: Option<&git2::Commit>) -> git2::Oid {
         let sig = Signature::now("Test User", "test@example.com").unwrap();
         let mut index = repo.index().unwrap();
-        index.add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None).unwrap();
+        index
+            .add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None)
+            .unwrap();
         index.write().unwrap();
         let tree_id = index.write_tree().unwrap();
         let tree = repo.find_tree(tree_id).unwrap();
@@ -191,7 +193,10 @@ mod tests {
 
         // Configure repo to avoid warnings
         repo.config().unwrap().set_str("user.name", "Test").unwrap();
-        repo.config().unwrap().set_str("user.email", "test@test.com").unwrap();
+        repo.config()
+            .unwrap()
+            .set_str("user.email", "test@test.com")
+            .unwrap();
 
         // Commit A: Initial commit on main
         fs::write(temp.path().join("base.txt"), "base content").unwrap();
@@ -206,7 +211,8 @@ mod tests {
 
         // Switch to feature branch
         repo.set_head("refs/heads/feature").unwrap();
-        repo.checkout_head(Some(git2::build::CheckoutBuilder::new().force())).unwrap();
+        repo.checkout_head(Some(git2::build::CheckoutBuilder::new().force()))
+            .unwrap();
 
         // Commit D: Add feature file on feature branch
         fs::write(temp.path().join("feature.txt"), "feature content").unwrap();
@@ -220,7 +226,8 @@ mod tests {
 
         // Now switch to main and add commits B and C
         repo.set_head("refs/heads/main").unwrap();
-        repo.checkout_head(Some(git2::build::CheckoutBuilder::new().force())).unwrap();
+        repo.checkout_head(Some(git2::build::CheckoutBuilder::new().force()))
+            .unwrap();
 
         // Commit B: Add main-only file
         fs::write(temp.path().join("main_only.txt"), "main only content").unwrap();
@@ -233,7 +240,8 @@ mod tests {
 
         // Switch back to feature branch
         repo.set_head("refs/heads/feature").unwrap();
-        repo.checkout_head(Some(git2::build::CheckoutBuilder::new().force())).unwrap();
+        repo.checkout_head(Some(git2::build::CheckoutBuilder::new().force()))
+            .unwrap();
 
         // Get changed files comparing feature branch to main
         let changed = get_changed_files(temp.path(), "main").unwrap();
@@ -245,12 +253,24 @@ mod tests {
             .collect();
 
         // Should contain feature branch files
-        assert!(changed_names.contains(&"feature.txt"), "Should contain feature.txt");
-        assert!(changed_names.contains(&"feature2.txt"), "Should contain feature2.txt");
+        assert!(
+            changed_names.contains(&"feature.txt"),
+            "Should contain feature.txt"
+        );
+        assert!(
+            changed_names.contains(&"feature2.txt"),
+            "Should contain feature2.txt"
+        );
 
         // Should NOT contain main-only files (this is the key assertion)
-        assert!(!changed_names.contains(&"main_only.txt"), "Should NOT contain main_only.txt");
-        assert!(!changed_names.contains(&"main_only2.txt"), "Should NOT contain main_only2.txt");
+        assert!(
+            !changed_names.contains(&"main_only.txt"),
+            "Should NOT contain main_only.txt"
+        );
+        assert!(
+            !changed_names.contains(&"main_only2.txt"),
+            "Should NOT contain main_only2.txt"
+        );
 
         // Should have exactly 2 changed files
         assert_eq!(changed.len(), 2, "Should have exactly 2 changed files");
@@ -266,7 +286,10 @@ mod tests {
         let repo = Repository::init(temp.path()).unwrap();
 
         repo.config().unwrap().set_str("user.name", "Test").unwrap();
-        repo.config().unwrap().set_str("user.email", "test@test.com").unwrap();
+        repo.config()
+            .unwrap()
+            .set_str("user.email", "test@test.com")
+            .unwrap();
 
         // Commit A
         fs::write(temp.path().join("file_a.txt"), "content a").unwrap();
@@ -274,7 +297,8 @@ mod tests {
         let commit_a = repo.find_commit(commit_a_oid).unwrap();
 
         // Create a tag at commit A to use as base reference
-        repo.tag_lightweight("v1.0", commit_a.as_object(), false).unwrap();
+        repo.tag_lightweight("v1.0", commit_a.as_object(), false)
+            .unwrap();
 
         // Commit B
         fs::write(temp.path().join("file_b.txt"), "content b").unwrap();
@@ -304,7 +328,10 @@ mod tests {
         let repo = Repository::init(temp.path()).unwrap();
 
         repo.config().unwrap().set_str("user.name", "Test").unwrap();
-        repo.config().unwrap().set_str("user.email", "test@test.com").unwrap();
+        repo.config()
+            .unwrap()
+            .set_str("user.email", "test@test.com")
+            .unwrap();
 
         // Initial commit with a file
         fs::write(temp.path().join("existing.txt"), "original").unwrap();
@@ -312,7 +339,8 @@ mod tests {
         let commit_a_oid = create_commit(&repo, "Initial", None);
         let commit_a = repo.find_commit(commit_a_oid).unwrap();
 
-        repo.tag_lightweight("base", commit_a.as_object(), false).unwrap();
+        repo.tag_lightweight("base", commit_a.as_object(), false)
+            .unwrap();
 
         // Second commit: modify, delete, and add
         fs::write(temp.path().join("existing.txt"), "modified").unwrap();
@@ -329,7 +357,8 @@ mod tests {
         let tree_id = index.write_tree().unwrap();
         let tree = repo.find_tree(tree_id).unwrap();
         let sig = Signature::now("Test", "test@test.com").unwrap();
-        repo.commit(Some("HEAD"), &sig, &sig, "Changes", &tree, &[&commit_a]).unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "Changes", &tree, &[&commit_a])
+            .unwrap();
 
         let changed = get_changed_files(temp.path(), "base").unwrap();
 
@@ -337,9 +366,18 @@ mod tests {
             changed.iter().find(|cf| cf.path.ends_with(name))
         };
 
-        assert_eq!(find_change("existing.txt").unwrap().change_type, ChangeType::Modified);
-        assert_eq!(find_change("to_delete.txt").unwrap().change_type, ChangeType::Deleted);
-        assert_eq!(find_change("new_file.txt").unwrap().change_type, ChangeType::Added);
+        assert_eq!(
+            find_change("existing.txt").unwrap().change_type,
+            ChangeType::Modified
+        );
+        assert_eq!(
+            find_change("to_delete.txt").unwrap().change_type,
+            ChangeType::Deleted
+        );
+        assert_eq!(
+            find_change("new_file.txt").unwrap().change_type,
+            ChangeType::Added
+        );
         assert_eq!(changed.len(), 3);
     }
 }
