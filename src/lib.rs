@@ -794,6 +794,63 @@ mod tests {
     }
 
     #[test]
+    fn test_extract_type_only_named_import() {
+        let content = r#"import type { Foo, Bar } from './types';"#;
+        let root_path = Path::new("/project");
+        let file_path = "/project/src/index.ts";
+
+        let parser = Parser::new(root_path);
+        let imports = parser.extract_imports(content, file_path);
+
+        assert_eq!(imports.len(), 2);
+        assert_eq!(imports[0].name, "Foo");
+        assert_eq!(imports[1].name, "Bar");
+    }
+
+    #[test]
+    fn test_extract_multiline_type_only_named_import() {
+        let content = r#"import type {
+  Foo,
+  Bar,
+} from './types';"#;
+        let root_path = Path::new("/project");
+        let file_path = "/project/src/index.ts";
+
+        let parser = Parser::new(root_path);
+        let imports = parser.extract_imports(content, file_path);
+
+        assert_eq!(imports.len(), 2);
+        assert_eq!(imports[0].name, "Foo");
+        assert_eq!(imports[1].name, "Bar");
+    }
+
+    #[test]
+    fn test_extract_type_only_default_import() {
+        let content = r#"import type Foo from './types';"#;
+        let root_path = Path::new("/project");
+        let file_path = "/project/src/index.ts";
+
+        let parser = Parser::new(root_path);
+        let imports = parser.extract_imports(content, file_path);
+
+        assert_eq!(imports.len(), 1);
+        assert_eq!(imports[0].name, "Foo");
+    }
+
+    #[test]
+    fn test_extract_type_only_namespace_import() {
+        let content = r#"import type * as FooTypes from './types';"#;
+        let root_path = Path::new("/project");
+        let file_path = "/project/src/index.ts";
+
+        let parser = Parser::new(root_path);
+        let imports = parser.extract_imports(content, file_path);
+
+        assert_eq!(imports.len(), 1);
+        assert_eq!(imports[0].name, "FooTypes");
+    }
+
+    #[test]
     fn test_extract_awork_alias_import() {
         let content = r#"import { Model } from '@awork/models';"#;
         let root_path = Path::new("/project");

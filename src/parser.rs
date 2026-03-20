@@ -11,13 +11,19 @@ use crate::entity::{Entity, EntityType, ImportInfo};
 
 // Pre-compiled regexes for import parsing
 static NORMALIZE_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r#"import\s*\{([^}]*)\}\s*from"#).unwrap());
+    LazyLock::new(|| Regex::new(r#"import\s*(?:type\s+)?\{([^}]*)\}\s*from"#).unwrap());
 
-static NAMED_IMPORT_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r#"import\s*\{([^}]+)\}\s*from\s*['"]([^'"]+)['"]"#).unwrap());
+static NAMED_IMPORT_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"import\s*(?:type\s+)?\{([^}]+)\}\s*from\s*['"]([^'"]+)['"]"#).unwrap()
+});
 
-static DEFAULT_IMPORT_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r#"import\s+(\w+)\s+from\s*['"]([^'"]+)['"]"#).unwrap());
+static DEFAULT_IMPORT_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"import\s+(?:type\s+)?(\w+)\s+from\s*['"]([^'"]+)['"]"#).unwrap()
+});
+
+static NAMESPACE_IMPORT_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"import\s+(?:type\s+)?\*\s+as\s+(\w+)\s+from\s*['"]([^'"]+)['"]"#).unwrap()
+});
 
 static LAZY_IMPORT_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"import\s*\(\s*['"]([^'"]+)['"]\s*\)\.then\s*\(\s*\w+\s*=>\s*\w+\.(\w+)\s*\)"#)
@@ -228,9 +234,20 @@ impl<'a> Parser<'a> {
             let name = cap[1].to_string();
             let import_path = cap[2].to_string();
 
-            if name == "type" || name == "from" {
+            if name == "from" {
                 continue;
             }
+
+            if let Some(resolved_path) =
+                resolve_import_path(file_path, &import_path, self.root_path)
+            {
+                imports.push(ImportInfo::new(name, resolved_path));
+            }
+        }
+
+        for cap in NAMESPACE_IMPORT_RE.captures_iter(&normalized_content) {
+            let name = cap[1].to_string();
+            let import_path = cap[2].to_string();
 
             if let Some(resolved_path) =
                 resolve_import_path(file_path, &import_path, self.root_path)
