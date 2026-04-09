@@ -101,6 +101,9 @@ pub struct QueryAllArgs {
 pub struct UnusedArgs {
     /// Path to the root of the typescript project
     pub path: String,
+    /// Exit with a non-zero status code when unused entities are found
+    #[arg(long, default_value = "false")]
+    pub fail_on_findings: bool,
 }
 
 #[derive(Args, Debug)]
@@ -209,4 +212,7 @@ pub struct AffectedMemLeaksArgs {
     /// Maximum number of detailed findings to show per entity
     #[arg(long, default_value = "5")]
     pub max_findings: usize,
+    /// Exit with a non-zero status code when memory leak findings are found
+    #[arg(long, default_value = "false")]
+    pub fail_on_findings: bool,
 }

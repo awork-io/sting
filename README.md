@@ -80,7 +80,13 @@ Find entities that are defined but never imported anywhere.
 
 ```sh
 sting unused ./my-project
+
+# Exit non-zero when unused entities are found
+sting unused ./my-project --fail-on-findings
 ```
+
+**Options:**
+- `--fail-on-findings` - Exit with a non-zero status code when unused entities are found
 
 ### graph
 
@@ -241,13 +247,16 @@ sting affected-mem-leaks ./my-project --base origin/develop --transitive
 
 # Scope affected set to web project only
 sting affected-mem-leaks ./my-project --base origin/develop --project web
+
+# Exit non-zero when leak findings are reported
+sting affected-mem-leaks ./my-project --base origin/develop --fail-on-findings
 ```
 
 **Notes:**
 - Only non-test files are analyzed (`.ts`, excluding `.spec.ts`, `.test.ts`, `.e2e.ts`)
 - Output includes total affected non-test file count and a preview of the first 10 files
 - When more than 10 files are analyzed, output includes `...and more (N additional files)`
-- This command is informational (no CI-gating exit behavior on findings)
+- Use `--fail-on-findings` to make this command exit non-zero after printing findings
 
 **Options:**
 - `--base` - Git reference to compare against (branch, tag, or commit SHA)
@@ -255,6 +264,7 @@ sting affected-mem-leaks ./my-project --base origin/develop --project web
 - `--project` - Filter affected set by project type: `web`, `mobile`, or `libs`
 - `--entity-type` - Filter leak analysis to specific entity types (comma-separated)
 - `--max-findings` - Maximum number of detailed findings to show per entity (default: 5)
+- `--fail-on-findings` - Exit with a non-zero status code when leak findings are found
 
 ### skill install
 

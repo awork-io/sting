@@ -187,7 +187,7 @@ pub fn query(root_path: &Path, query: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn unused(root_path: &Path) -> Result<()> {
+pub fn unused(root_path: &Path, fail_on_findings: bool) -> Result<()> {
     let result = scan_and_parse_files(root_path, true)?;
 
     let mut unused_entities: Vec<_> = result
@@ -209,6 +209,13 @@ pub fn unused(root_path: &Path) -> Result<()> {
         unused_entities.len(),
         result.entities.len()
     );
+
+    if fail_on_findings && !unused_entities.is_empty() {
+        anyhow::bail!(
+            "Found {} unused entities (failing due to --fail-on-findings)",
+            unused_entities.len()
+        );
+    }
 
     Ok(())
 }
@@ -625,7 +632,8 @@ pub fn mem_leaks(
     max_findings: usize,
 ) -> Result<()> {
     let result = scan_and_parse_files(root_path, false)?;
-    analyze_mem_leaks_and_print(&result.entities, entity_type_filters, max_findings)
+    analyze_mem_leaks_and_print(&result.entities, entity_type_filters, max_findings)?;
+    Ok(())
 }
 
 pub fn affected_mem_leaks(
@@ -635,6 +643,7 @@ pub fn affected_mem_leaks(
     project_filter: Option<&str>,
     entity_type_filters: &[String],
     max_findings: usize,
+    fail_on_findings: bool,
 ) -> Result<()> {
     let changed_files = get_changed_files(root_path, base_ref)?;
 
@@ -702,7 +711,17 @@ pub fn affected_mem_leaks(
         .filter(|(_, entity)| affected_non_test_files.contains(&entity.file_path))
         .collect();
 
-    analyze_mem_leaks_and_print(&scoped_entities, entity_type_filters, max_findings)
+    let report_count =
+        analyze_mem_leaks_and_print(&scoped_entities, entity_type_filters, max_findings)?;
+
+    if fail_on_findings && report_count > 0 {
+        anyhow::bail!(
+            "Found memory leak risks in {} entities (failing due to --fail-on-findings)",
+            report_count
+        );
+    }
+
+    Ok(())
 }
 
 fn print_affected_entity(entity: &Entity, reason: &str) {

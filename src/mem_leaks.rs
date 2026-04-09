@@ -76,7 +76,7 @@ pub(crate) fn analyze_and_print(
     entities: &HashMap<String, Entity>,
     entity_type_filters: &[String],
     max_findings: usize,
-) -> Result<()> {
+) -> Result<usize> {
     let mut entities_by_file: HashMap<String, Vec<&Entity>> = HashMap::new();
 
     for entity in entities.values() {
@@ -123,7 +123,7 @@ pub(crate) fn analyze_and_print(
 
     if reports.is_empty() {
         println!("No potential memory leaks detected.");
-        return Ok(());
+        return Ok(0);
     }
 
     reports.sort_by(|a, b| {
@@ -134,9 +134,11 @@ pub(crate) fn analyze_and_print(
             .then(a.name.cmp(&b.name))
     });
 
+    let report_count = reports.len();
+
     println!(
         "Found potential memory leak risks in {} entities:\n",
-        reports.len()
+        report_count
     );
     for report in reports {
         let top = top_severity(&report.findings);
@@ -164,7 +166,7 @@ pub(crate) fn analyze_and_print(
         }
     }
 
-    Ok(())
+    Ok(report_count)
 }
 
 fn top_severity(findings: &[LeakFinding]) -> Severity {

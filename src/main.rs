@@ -52,7 +52,7 @@ fn main() -> Result<()> {
         Commands::Unused(args) => {
             let path = canonicalize_path(&args.path)?;
 
-            sting::unused(&path).with_context(|| {
+            sting::unused(&path, args.fail_on_findings).with_context(|| {
                 format!("Unable to find unused entities in path: {}", path.display())
             })?
         }
@@ -148,6 +148,7 @@ fn main() -> Result<()> {
                 project_filter,
                 &entity_type_filters,
                 args.max_findings,
+                args.fail_on_findings,
             )
             .with_context(|| {
                 format!(
