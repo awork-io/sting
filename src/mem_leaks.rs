@@ -309,7 +309,9 @@ fn detect_rxjs_subscriptions(
         .unwrap_or_default();
 
     for m in subscribe_re.find_iter(segment) {
-        if is_api_subscription(segment, m.start(), m.end()) {
+        if is_api_subscription(segment, m.start(), m.end())
+            || is_modal_render_subscription(segment, m.start(), m.end())
+        {
             continue;
         }
 
@@ -339,15 +341,8 @@ fn detect_rxjs_subscriptions(
 }
 
 fn is_api_subscription(segment: &str, subscribe_start: usize, subscribe_end: usize) -> bool {
-    let statement_start = segment[..subscribe_start]
-        .rfind(';')
-        .map(|idx| idx + 1)
-        .unwrap_or(0);
-    let statement_end = segment[subscribe_end..]
-        .find(';')
-        .map(|idx| subscribe_end + idx)
-        .unwrap_or(segment.len());
-    let statement = &segment[statement_start..statement_end];
+    let statement = statement_containing(segment, subscribe_start, subscribe_end);
+
 
     let service_call_re =
         Regex::new(r"this\.[A-Za-z_$][A-Za-z0-9_$]*Service\.([A-Za-z_$][A-Za-z0-9_$]*)\s*\(")
@@ -383,6 +378,26 @@ fn is_api_subscription(segment: &str, subscribe_start: usize, subscribe_end: usi
     }
 
     false
+}
+
+fn is_modal_render_subscription(segment: &str, subscribe_start: usize, subscribe_end: usize) -> bool {
+    let statement = statement_containing(segment, subscribe_start, subscribe_end);
+
+    let modal_render_re = Regex::new(
+        r"[A-Za-z_$][A-Za-z0-9_$]*(?:Modal|ModalComponent)\.renderModal\s*\(",
+    )
+    .expect("valid modal render regex");
+
+    modal_render_re.find(statement).is_some_and(|m| m.start() < subscribe_start)
+}
+
+fn statement_containing(segment: &str, start: usize, end: usize) -> &str {
+    let statement_start = segment[..start].rfind(';').map(|idx| idx + 1).unwrap_or(0);
+    let statement_end = segment[end..]
+        .find(';')
+        .map(|idx| end + idx)
+        .unwrap_or(segment.len());
+    &segment[statement_start..statement_end]
 }
 
 fn api_like_method_name(method_name: &str) -> bool {
@@ -827,6 +842,20 @@ mod tests {
     #[test]
     fn suppresses_api_service_subscription() {
         let content = "this.userService.fetchUser(userId).subscribe();";
+        let findings = detect_segment_leaks(content, 1, false, None);
+        assert!(findings.iter().all(|f| f.kind != "rxjs-subscription"));
+    }
+
+    #[test]
+    fn suppresses_modal_render_subscription() {
+        let content = "TaskDetailModalComponent.renderModal(this.notification.task).subscribe();";
+        let findings = detect_segment_leaks(content, 1, false, None);
+        assert!(findings.iter().all(|f| f.kind != "rxjs-subscription"));
+    }
+
+    #[test]
+    fn suppresses_modal_render_output_subscription() {
+        let content = "AddWorkspaceAbsenceModalComponent.renderModal().saved.subscribe(() => {});";
         let findings = detect_segment_leaks(content, 1, false, None);
         assert!(findings.iter().all(|f| f.kind != "rxjs-subscription"));
     }
