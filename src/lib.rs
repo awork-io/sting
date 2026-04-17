@@ -630,9 +630,10 @@ pub fn mem_leaks(
     root_path: &Path,
     entity_type_filters: &[String],
     max_findings: usize,
+    strict: bool,
 ) -> Result<()> {
     let result = scan_and_parse_files(root_path, false)?;
-    analyze_mem_leaks_and_print(&result.entities, entity_type_filters, max_findings)?;
+    analyze_mem_leaks_and_print(&result.entities, entity_type_filters, max_findings, strict)?;
     Ok(())
 }
 
@@ -643,6 +644,7 @@ pub fn affected_mem_leaks(
     project_filter: Option<&str>,
     entity_type_filters: &[String],
     max_findings: usize,
+    strict: bool,
     fail_on_findings: bool,
 ) -> Result<()> {
     let changed_files = get_changed_files(root_path, base_ref)?;
@@ -712,7 +714,7 @@ pub fn affected_mem_leaks(
         .collect();
 
     let report_count =
-        analyze_mem_leaks_and_print(&scoped_entities, entity_type_filters, max_findings)?;
+        analyze_mem_leaks_and_print(&scoped_entities, entity_type_filters, max_findings, strict)?;
 
     if fail_on_findings && report_count > 0 {
         anyhow::bail!(

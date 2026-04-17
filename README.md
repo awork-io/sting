@@ -216,6 +216,9 @@ sting mem-leaks ./my-project --entity-type component,service
 
 # Limit detailed findings shown per entity
 sting mem-leaks ./my-project --max-findings 3
+
+# Strict mode keeps take(1), first(), and last() subscriptions as potential leaks
+sting mem-leaks ./my-project --strict
 ```
 
 **Output format** (tab-separated):
@@ -225,14 +228,19 @@ sting mem-leaks ./my-project --max-findings 3
 
 **Current rule behavior:**
 - RxJS subscriptions without cleanup are reported, with conservative suppression for proven cleanup patterns
-- Finite RxJS operators like `take(1)`, `first()`, `last()`, `single()`, and `takeWhile()` are still treated as potential leak risk
+- `take(1)`, `first()`, and `last()` subscriptions are treated as finite and are not reported as leaks by default
+- `--strict` keeps `take(1)`, `first()`, and `last()` subscriptions as potential leaks
+- `--strict` also reports `setTimeout` without `clearTimeout`
+- Other finite RxJS operators like `single()` and `takeWhile()` are still treated as potential leak risk
 - `@AutoUnsubscribe(...)` suppresses only subscriptions that are provably tracked by the decorator config
 - API-call subscriptions are suppressed (for example service/API client/HTTP call subscriptions)
-- Timer checks include `setInterval` only (`setTimeout` is intentionally ignored)
+- Timer checks always report `setInterval` without `clearInterval`
+- `setTimeout` without `clearTimeout` is reported only in `--strict` mode
 
 **Options:**
 - `--entity-type` - Filter to specific entity types (comma-separated). See [Entity Types](#entity-types) for available values.
 - `--max-findings` - Maximum number of detailed findings to show per entity (default: 5)
+- `--strict` - Use stricter RxJS heuristics and keep `take(1)`, `first()`, and `last()` subscriptions as potential leaks
 
 ### affected-mem-leaks
 
@@ -247,6 +255,9 @@ sting affected-mem-leaks ./my-project --base origin/develop --transitive
 
 # Scope affected set to web project only
 sting affected-mem-leaks ./my-project --base origin/develop --project web
+
+# Strict mode keeps take(1), first(), and last() subscriptions as potential leaks
+sting affected-mem-leaks ./my-project --base origin/develop --strict
 
 # Exit non-zero when leak findings are reported
 sting affected-mem-leaks ./my-project --base origin/develop --fail-on-findings
@@ -264,6 +275,7 @@ sting affected-mem-leaks ./my-project --base origin/develop --fail-on-findings
 - `--project` - Filter affected set by project type: `web`, `mobile`, or `libs`
 - `--entity-type` - Filter leak analysis to specific entity types (comma-separated)
 - `--max-findings` - Maximum number of detailed findings to show per entity (default: 5)
+- `--strict` - Use stricter RxJS heuristics and keep `take(1)`, `first()`, and `last()` subscriptions as potential leaks
 - `--fail-on-findings` - Exit with a non-zero status code when leak findings are found
 
 ### skill install

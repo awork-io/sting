@@ -191,6 +191,9 @@ pub struct MemLeaksArgs {
     /// Maximum number of detailed findings to show per entity
     #[arg(long, default_value = "5")]
     pub max_findings: usize,
+    /// Use stricter RxJS heuristics and keep take(1) subscriptions as potential leaks
+    #[arg(long, default_value = "false")]
+    pub strict: bool,
 }
 
 #[derive(Args, Debug)]
@@ -212,6 +215,9 @@ pub struct AffectedMemLeaksArgs {
     /// Maximum number of detailed findings to show per entity
     #[arg(long, default_value = "5")]
     pub max_findings: usize,
+    /// Use stricter RxJS heuristics and keep take(1) subscriptions as potential leaks
+    #[arg(long, default_value = "false")]
+    pub strict: bool,
     /// Exit with a non-zero status code when memory leak findings are found
     #[arg(long, default_value = "false")]
     pub fail_on_findings: bool,

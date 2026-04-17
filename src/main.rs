@@ -128,9 +128,10 @@ fn main() -> Result<()> {
 
             let entity_type_filters = entity_type_filters_from(&args.entity_type);
 
-            sting::mem_leaks(&path, &entity_type_filters, args.max_findings).with_context(
-                || format!("Unable to analyze memory leaks in path: {}", path.display()),
-            )?;
+            sting::mem_leaks(&path, &entity_type_filters, args.max_findings, args.strict)
+                .with_context(|| {
+                    format!("Unable to analyze memory leaks in path: {}", path.display())
+                })?;
         }
         Commands::AffectedMemLeaks(args) => {
             let path = canonicalize_path(&args.path)?;
@@ -148,6 +149,7 @@ fn main() -> Result<()> {
                 project_filter,
                 &entity_type_filters,
                 args.max_findings,
+                args.strict,
                 args.fail_on_findings,
             )
             .with_context(|| {

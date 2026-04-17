@@ -76,6 +76,7 @@ pub(crate) fn analyze_and_print(
     entities: &HashMap<String, Entity>,
     entity_type_filters: &[String],
     max_findings: usize,
+    strict: bool,
 ) -> Result<usize> {
     let mut entities_by_file: HashMap<String, Vec<&Entity>> = HashMap::new();
 
@@ -103,7 +104,7 @@ pub(crate) fn analyze_and_print(
         };
 
         let content = strip_comments(&content);
-        let mut findings_by_entity = analyze_file_by_entity(&content, &file_entities);
+        let mut findings_by_entity = analyze_file_by_entity(&content, &file_entities, strict);
 
         for entity in file_entities {
             let mut findings = findings_by_entity.remove(&entity.id).unwrap_or_default();
@@ -180,6 +181,7 @@ fn top_severity(findings: &[LeakFinding]) -> Severity {
 fn analyze_file_by_entity(
     content: &str,
     file_entities: &[&Entity],
+    strict: bool,
 ) -> HashMap<String, Vec<LeakFinding>> {
     let mut result: HashMap<String, Vec<LeakFinding>> = HashMap::new();
     let total_lines = content.lines().count().max(1);
@@ -195,7 +197,7 @@ fn analyze_file_by_entity(
         if file_entities.len() == 1 {
             let auto_unsubscribe =
                 extract_auto_unsubscribe_config(content, 1, &file_entities[0].entity_type);
-            let findings = detect_segment_leaks(content, 1, true, auto_unsubscribe.as_ref());
+            let findings = detect_segment_leaks(content, 1, true, auto_unsubscribe.as_ref(), strict);
             result.insert(file_entities[0].id.clone(), findings);
         }
         return result;
@@ -219,7 +221,7 @@ fn analyze_file_by_entity(
         let auto_unsubscribe =
             extract_auto_unsubscribe_config(content, *start_line, &entity.entity_type);
         let findings =
-            detect_segment_leaks(&segment, *start_line, false, auto_unsubscribe.as_ref());
+            detect_segment_leaks(&segment, *start_line, false, auto_unsubscribe.as_ref(), strict);
         if !findings.is_empty() {
             result.insert(entity.id.clone(), findings);
         }
@@ -264,6 +266,7 @@ fn detect_segment_leaks(
     base_line: usize,
     uncertain_assignment: bool,
     auto_unsubscribe: Option<&AutoUnsubscribeConfig>,
+    strict: bool,
 ) -> Vec<LeakFinding> {
     let mut findings = Vec::new();
 
@@ -272,13 +275,14 @@ fn detect_segment_leaks(
         base_line,
         uncertain_assignment,
         auto_unsubscribe,
+        strict,
     ));
     findings.extend(detect_dom_listeners(
         segment,
         base_line,
         uncertain_assignment,
     ));
-    findings.extend(detect_timers(segment, base_line, uncertain_assignment));
+    findings.extend(detect_timers(segment, base_line, uncertain_assignment, strict));
     findings.extend(detect_observers(segment, base_line, uncertain_assignment));
     findings.extend(detect_streams(segment, base_line, uncertain_assignment));
 
@@ -290,6 +294,7 @@ fn detect_rxjs_subscriptions(
     base_line: usize,
     uncertain_assignment: bool,
     auto_unsubscribe: Option<&AutoUnsubscribeConfig>,
+    strict: bool,
 ) -> Vec<LeakFinding> {
     let subscribe_re = Regex::new(r"\.subscribe\s*\(").expect("valid subscribe regex");
     let has_cleanup = Regex::new(r"\.unsubscribe\s*\(")
@@ -311,6 +316,7 @@ fn detect_rxjs_subscriptions(
     for m in subscribe_re.find_iter(segment) {
         if is_api_subscription(segment, m.start(), m.end())
             || is_modal_render_subscription(segment, m.start(), m.end())
+            || (!strict && is_default_safe_finite_subscription(segment, m.start(), m.end()))
         {
             continue;
         }
@@ -389,6 +395,19 @@ fn is_modal_render_subscription(segment: &str, subscribe_start: usize, subscribe
     .expect("valid modal render regex");
 
     modal_render_re.find(statement).is_some_and(|m| m.start() < subscribe_start)
+}
+
+fn is_default_safe_finite_subscription(
+    segment: &str,
+    subscribe_start: usize,
+    subscribe_end: usize,
+) -> bool {
+    let statement = statement_containing(segment, subscribe_start, subscribe_end);
+    let finite_re = Regex::new(r"\b(?:take\s*\(\s*1\s*\)|first\s*\(|last\s*\()").expect(
+        "valid finite operator regex",
+    );
+
+    finite_re.find(statement).is_some_and(|m| m.start() < subscribe_start)
 }
 
 fn statement_containing(segment: &str, start: usize, end: usize) -> &str {
@@ -635,12 +654,21 @@ fn detect_dom_listeners(
     findings
 }
 
-fn detect_timers(segment: &str, base_line: usize, uncertain_assignment: bool) -> Vec<LeakFinding> {
+fn detect_timers(
+    segment: &str,
+    base_line: usize,
+    uncertain_assignment: bool,
+    strict: bool,
+) -> Vec<LeakFinding> {
     let set_interval_re = Regex::new(r"setInterval\s*\(").expect("valid setInterval regex");
     let clear_interval_re = Regex::new(r"clearInterval\s*\(").expect("valid clearInterval regex");
+    let set_timeout_re = Regex::new(r"setTimeout\s*\(").expect("valid setTimeout regex");
+    let clear_timeout_re = Regex::new(r"clearTimeout\s*\(").expect("valid clearTimeout regex");
 
     let interval_count = set_interval_re.find_iter(segment).count();
     let cleared_interval_count = clear_interval_re.find_iter(segment).count();
+    let timeout_count = set_timeout_re.find_iter(segment).count();
+    let cleared_timeout_count = clear_timeout_re.find_iter(segment).count();
 
     let mut findings = Vec::new();
     if interval_count > cleared_interval_count {
@@ -654,6 +682,21 @@ fn detect_timers(segment: &str, base_line: usize, uncertain_assignment: bool) ->
                 line,
                 kind: "timer-interval",
                 message: "setInterval appears without clearInterval.".to_string(),
+            });
+        }
+    }
+
+    if strict && timeout_count > cleared_timeout_count {
+        for m in set_timeout_re
+            .find_iter(segment)
+            .take(timeout_count - cleared_timeout_count)
+        {
+            let line = base_line + line_number_at(segment, m.start()) - 1;
+            findings.push(LeakFinding {
+                severity: adjusted_severity(Severity::Medium, uncertain_assignment),
+                line,
+                kind: "timer-timeout",
+                message: "setTimeout appears without clearTimeout (strict mode).".to_string(),
             });
         }
     }
@@ -761,28 +804,63 @@ mod tests {
     #[test]
     fn flags_unmanaged_subscription() {
         let content = "this.stream.subscribe(v => v);";
-        let findings = detect_segment_leaks(content, 10, false, None);
+        let findings = detect_segment_leaks(content, 10, false, None, false);
         assert!(findings.iter().any(|f| f.kind == "rxjs-subscription"));
     }
 
     #[test]
     fn skips_managed_subscription_take_until_destroyed() {
         let content = "this.stream.pipe(takeUntilDestroyed()).subscribe(v => v);";
-        let findings = detect_segment_leaks(content, 1, false, None);
+        let findings = detect_segment_leaks(content, 1, false, None, false);
         assert!(findings.iter().all(|f| f.kind != "rxjs-subscription"));
     }
 
     #[test]
-    fn flags_subscription_with_take_one() {
+    fn suppresses_subscription_with_take_one() {
         let content = "this.stream.pipe(take(1)).subscribe(v => v);";
-        let findings = detect_segment_leaks(content, 1, false, None);
+        let findings = detect_segment_leaks(content, 1, false, None, false);
+        assert!(findings.iter().all(|f| f.kind != "rxjs-subscription"));
+    }
+
+    #[test]
+    fn strict_mode_flags_subscription_with_take_one() {
+        let content = "this.stream.pipe(take(1)).subscribe(v => v);";
+        let findings = detect_segment_leaks(content, 1, false, None, true);
         assert!(findings.iter().any(|f| f.kind == "rxjs-subscription"));
     }
 
     #[test]
-    fn flags_subscription_with_first_operator() {
+    fn still_flags_subscription_with_take_more_than_one() {
+        let content = "this.stream.pipe(take(2)).subscribe(v => v);";
+        let findings = detect_segment_leaks(content, 1, false, None, false);
+        assert!(findings.iter().any(|f| f.kind == "rxjs-subscription"));
+    }
+
+    #[test]
+    fn suppresses_subscription_with_first_operator_by_default() {
         let content = "this.stream.pipe(first()).subscribe(v => v);";
-        let findings = detect_segment_leaks(content, 1, false, None);
+        let findings = detect_segment_leaks(content, 1, false, None, false);
+        assert!(findings.iter().all(|f| f.kind != "rxjs-subscription"));
+    }
+
+    #[test]
+    fn strict_mode_flags_subscription_with_first_operator() {
+        let content = "this.stream.pipe(first()).subscribe(v => v);";
+        let findings = detect_segment_leaks(content, 1, false, None, true);
+        assert!(findings.iter().any(|f| f.kind == "rxjs-subscription"));
+    }
+
+    #[test]
+    fn suppresses_subscription_with_last_operator_by_default() {
+        let content = "this.stream.pipe(last()).subscribe(v => v);";
+        let findings = detect_segment_leaks(content, 1, false, None, false);
+        assert!(findings.iter().all(|f| f.kind != "rxjs-subscription"));
+    }
+
+    #[test]
+    fn strict_mode_flags_subscription_with_last_operator() {
+        let content = "this.stream.pipe(last()).subscribe(v => v);";
+        let findings = detect_segment_leaks(content, 1, false, None, true);
         assert!(findings.iter().any(|f| f.kind == "rxjs-subscription"));
     }
 
@@ -790,7 +868,7 @@ mod tests {
     fn suppresses_subscription_with_auto_unsubscribe_when_assigned_to_property() {
         let content = "this.fetchSubscription = this.service.fetch().subscribe();";
         let auto = AutoUnsubscribeConfig::default();
-        let findings = detect_segment_leaks(content, 1, false, Some(&auto));
+        let findings = detect_segment_leaks(content, 1, false, Some(&auto), false);
         assert!(findings.iter().all(|f| f.kind != "rxjs-subscription"));
     }
 
@@ -798,7 +876,7 @@ mod tests {
     fn does_not_suppress_auto_unsubscribe_when_tracking_is_not_proven() {
         let content = "this.service.fetch().subscribe();";
         let auto = AutoUnsubscribeConfig::default();
-        let findings = detect_segment_leaks(content, 1, false, Some(&auto));
+        let findings = detect_segment_leaks(content, 1, false, Some(&auto), false);
         assert!(findings.iter().any(|f| f.kind == "rxjs-subscription"));
     }
 
@@ -807,63 +885,70 @@ mod tests {
         let content = "this.fetchSubscription = this.service.fetch().subscribe();";
         let mut auto = AutoUnsubscribeConfig::default();
         auto.blacklist.insert("fetchSubscription".to_string());
-        let findings = detect_segment_leaks(content, 1, false, Some(&auto));
+        let findings = detect_segment_leaks(content, 1, false, Some(&auto), false);
         assert!(findings.iter().any(|f| f.kind == "rxjs-subscription"));
     }
 
     #[test]
     fn flags_interval_without_clear() {
         let content = "const id = setInterval(tick, 1000);";
-        let findings = detect_segment_leaks(content, 1, false, None);
+        let findings = detect_segment_leaks(content, 1, false, None, false);
         assert!(findings.iter().any(|f| f.kind == "timer-interval"));
     }
 
     #[test]
-    fn ignores_set_timeout_without_clear() {
+    fn ignores_set_timeout_without_clear_by_default() {
         let content = "setTimeout(() => doStuff(), 1000);";
-        let findings = detect_segment_leaks(content, 1, false, None);
+        let findings = detect_segment_leaks(content, 1, false, None, false);
         assert!(findings.iter().all(|f| !f.kind.starts_with("timer-")));
+    }
+
+    #[test]
+    fn strict_mode_flags_set_timeout_without_clear() {
+        let content = "setTimeout(() => doStuff(), 1000);";
+        let findings = detect_segment_leaks(content, 1, false, None, true);
+        assert!(findings.iter().any(|f| f.kind == "timer-timeout"));
     }
 
     #[test]
     fn flags_observer_without_disconnect() {
         let content = "const o = new MutationObserver(() => {}); o.observe(node);";
-        let findings = detect_segment_leaks(content, 1, false, None);
+        let findings = detect_segment_leaks(content, 1, false, None, false);
         assert!(findings.iter().any(|f| f.kind == "observer"));
     }
 
     #[test]
     fn flags_websocket_without_close() {
         let content = "const socket = new WebSocket(url);";
-        let findings = detect_segment_leaks(content, 1, false, None);
+        let findings = detect_segment_leaks(content, 1, false, None, false);
         assert!(findings.iter().any(|f| f.kind == "websocket"));
     }
 
     #[test]
     fn suppresses_api_service_subscription() {
         let content = "this.userService.fetchUser(userId).subscribe();";
-        let findings = detect_segment_leaks(content, 1, false, None);
+        let findings = detect_segment_leaks(content, 1, false, None, false);
         assert!(findings.iter().all(|f| f.kind != "rxjs-subscription"));
     }
 
     #[test]
     fn suppresses_modal_render_subscription() {
         let content = "TaskDetailModalComponent.renderModal(this.notification.task).subscribe();";
-        let findings = detect_segment_leaks(content, 1, false, None);
+        let findings = detect_segment_leaks(content, 1, false, None, false);
         assert!(findings.iter().all(|f| f.kind != "rxjs-subscription"));
     }
 
     #[test]
     fn suppresses_modal_render_output_subscription() {
         let content = "AddWorkspaceAbsenceModalComponent.renderModal().saved.subscribe(() => {});";
-        let findings = detect_segment_leaks(content, 1, false, None);
+        let findings = detect_segment_leaks(content, 1, false, None, false);
         assert!(findings.iter().all(|f| f.kind != "rxjs-subscription"));
     }
 
     #[test]
     fn keeps_non_api_subscription_findings() {
         let content = "this.taskQuery.selectActiveTask().subscribe();";
-        let findings = detect_segment_leaks(content, 1, false, None);
+        let findings = detect_segment_leaks(content, 1, false, None, false);
         assert!(findings.iter().any(|f| f.kind == "rxjs-subscription"));
     }
 }

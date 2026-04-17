@@ -73,12 +73,17 @@ Use this skill when the user asks:
 - `sting mem-leaks <path>` - Detect potential memory leak risks by entity
 - `sting mem-leaks <path> --entity-type component,service` - Restrict leak analysis to entity types
 - `sting mem-leaks <path> --max-findings 3` - Limit detailed findings shown per entity
+- `sting mem-leaks <path> --strict` - Keep `take(1)`, `first`, and `last` subscriptions as potential leaks
 - `sting affected-mem-leaks <path> --base <ref>` - Analyze leaks only in affected non-test files
 - `sting affected-mem-leaks <path> --base <ref> --transitive` - Include transitive consumers in affected set
 
 Behavior notes:
-- `mem-leaks` checks `setInterval` cleanup but intentionally ignores `setTimeout`
-- finite operators (`take(1)`, `first`, `last`, `single`, `takeWhile`) are treated as potential leak risk
+- `mem-leaks` always checks `setInterval` cleanup
+- `setTimeout` without `clearTimeout` is only reported in `--strict` mode
+- `take(1)`, `first`, and `last` subscriptions are treated as finite and are not reported as leaks by default
+- `--strict` keeps `take(1)`, `first`, and `last` subscriptions as potential leaks
+- `--strict` also reports `setTimeout` without `clearTimeout`
+- other finite operators (`single`, `takeWhile`) are treated as potential leak risk
 - `@AutoUnsubscribe(...)` is honored only when the subscription is provably tracked
 - API-call subscriptions are suppressed in conservative mode
 - `affected-mem-leaks` analyzes only non-test `.ts` files and prints the first 10 affected files with count
@@ -157,6 +162,7 @@ Behavior notes:
   `class`, `component`, `service`, `directive`, `pipe`, `enum`,
   `type`, `interface`, `function`, `const`, `worker`
 - `--max-findings <n>`: maximum number of detailed findings shown per entity (default `5`)
+- `--strict`: keep `take(1)`, `first`, and `last` subscriptions as potential leaks
 
 ### `affected-mem-leaks`
 
@@ -167,6 +173,7 @@ Behavior notes:
   `class`, `component`, `service`, `directive`, `pipe`, `enum`,
   `type`, `interface`, `function`, `const`, `worker`
 - `--max-findings <n>`: maximum number of detailed findings shown per entity (default `5`)
+- `--strict`: keep `take(1)`, `first`, and `last` subscriptions as potential leaks
 - Scope: only non-test `.ts` files (`.spec.ts`, `.test.ts`, `.e2e.ts` excluded)
 - Output: shows total affected non-test files and first 10 file paths (`...and more` when applicable)
 
