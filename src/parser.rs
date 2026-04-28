@@ -220,10 +220,8 @@ impl<'a> Parser<'a> {
                     continue;
                 }
 
-                let name = if let Some(pos) = name_part.find(" as ") {
-                    name_part[..pos].trim().to_string()
-                } else {
-                    name_part.to_string()
+                let Some(name) = normalize_named_import(name_part) else {
+                    continue;
                 };
 
                 imports.push(ImportInfo::new(name, resolved_path.clone()));
@@ -291,6 +289,25 @@ impl<'a> Parser<'a> {
         }
 
         imports
+    }
+}
+
+fn normalize_named_import(name_part: &str) -> Option<String> {
+    let without_inline_type = name_part.strip_prefix("type ").unwrap_or(name_part).trim();
+    if without_inline_type.is_empty() {
+        return None;
+    }
+
+    let name = if let Some(pos) = without_inline_type.find(" as ") {
+        without_inline_type[..pos].trim()
+    } else {
+        without_inline_type
+    };
+
+    if name.is_empty() {
+        None
+    } else {
+        Some(name.to_string())
     }
 }
 
