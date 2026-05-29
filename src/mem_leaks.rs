@@ -315,7 +315,16 @@ fn detect_rxjs_subscriptions(
 
     for m in subscribe_re.find_iter(segment) {
         if is_api_subscription(segment, m.start(), m.end())
+            || is_assigned_api_observable_subscription(segment, m.start(), m.end())
+            || is_clipboard_subscription(segment, m.start(), m.end())
+            || is_angular_to_observable_with_injector_subscription(segment, m.start(), m.end())
+            || is_promise_from_subscription(segment, m.start(), m.end())
+            || is_fork_join_subscription(segment, m.start(), m.end())
             || is_modal_render_subscription(segment, m.start(), m.end())
+            || is_modal_service_result_subscription(segment, m.start(), m.end())
+            || is_submit_action_subscription(segment, m.start(), m.end())
+            || is_modal_or_popup_output_subscription(segment, m.start(), m.end())
+            || is_output_to_observable_subscription(segment, m.start(), m.end())
             || (!strict && is_default_safe_finite_subscription(segment, m.start(), m.end()))
         {
             continue;
@@ -324,6 +333,9 @@ fn detect_rxjs_subscriptions(
         if handled_by_auto
             .iter()
             .any(|(start, end)| m.start() >= *start && m.end() <= *end)
+            || auto_unsubscribe.is_some_and(|cfg| {
+                is_auto_unsubscribe_array_push_subscription(segment, m.start(), m.end(), cfg)
+            })
         {
             continue;
         }
@@ -346,12 +358,106 @@ fn detect_rxjs_subscriptions(
     out
 }
 
+fn is_angular_to_observable_with_injector_subscription(
+    segment: &str,
+    subscribe_start: usize,
+    subscribe_end: usize,
+) -> bool {
+    let statement = statement_containing(segment, subscribe_start, subscribe_end);
+
+    let to_observable_re = Regex::new(r"\btoObservable\s*\(").expect("valid toObservable regex");
+    let injector_option_re = Regex::new(r"\{[^}]*\binjector\b[^}]*\}")
+        .expect("valid toObservable injector option regex");
+
+    to_observable_re
+        .find(statement)
+        .is_some_and(|m| m.start() < subscribe_start)
+        && injector_option_re.is_match(statement)
+}
+
+fn is_assigned_api_observable_subscription(
+    segment: &str,
+    subscribe_start: usize,
+    subscribe_end: usize,
+) -> bool {
+    let statement = statement_containing(segment, subscribe_start, subscribe_end);
+    let var_re = Regex::new(r"\b([A-Za-z_$][A-Za-z0-9_$]*)\s*\.\s*subscribe\s*\(")
+        .expect("valid variable subscribe regex");
+    let Some(cap) = var_re.captures(statement) else {
+        return false;
+    };
+    let var_name = &cap[1];
+
+    let assignment_pattern = format!(
+        r"(?s)\b{}\s*=\s*([^;]+Service[A-Za-z0-9_$]*\s*\.\s*([A-Za-z_$][A-Za-z0-9_$]*)(?:\s*<[^>]+>)?\s*\([^;]*)",
+        regex::escape(var_name)
+    );
+    let Ok(assignment_re) = Regex::new(&assignment_pattern) else {
+        return false;
+    };
+
+    assignment_re.captures_iter(segment).any(|assignment_cap| {
+        let Some(assignment_match) = assignment_cap.get(0) else {
+            return false;
+        };
+        assignment_match.start() < subscribe_start && api_like_method_name(&assignment_cap[2])
+    })
+}
+
+fn is_clipboard_subscription(segment: &str, subscribe_start: usize, subscribe_end: usize) -> bool {
+    let statement = statement_containing(segment, subscribe_start, subscribe_end);
+
+    let clipboard_re = Regex::new(r"\bcopyToClipboard\s*\(").expect("valid clipboard regex");
+    clipboard_re
+        .find(statement)
+        .is_some_and(|m| m.start() < subscribe_start)
+}
+
+fn is_fork_join_subscription(segment: &str, subscribe_start: usize, subscribe_end: usize) -> bool {
+    let statement = statement_containing(segment, subscribe_start, subscribe_end);
+
+    if Regex::new(r"\bforkJoin\s*\(")
+        .expect("valid forkJoin regex")
+        .find(statement)
+        .is_some_and(|m| m.start() < subscribe_start)
+    {
+        return true;
+    }
+
+    let method_call_re = Regex::new(r"this\.([A-Za-z_$][A-Za-z0-9_$]*)\s*\(")
+        .expect("valid this method call regex");
+    for cap in method_call_re.captures_iter(statement) {
+        let method_name = &cap[1];
+        let method_decl_pattern = format!(
+            r"(?s){}\s*\([^)]*\)\s*:[^{{]+\{{.*?\bforkJoin\s*\(",
+            regex::escape(method_name)
+        );
+        let Ok(method_decl_re) = Regex::new(&method_decl_pattern) else {
+            continue;
+        };
+        if method_decl_re.is_match(segment) {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn is_promise_from_subscription(segment: &str, subscribe_start: usize, subscribe_end: usize) -> bool {
+    let statement = statement_containing(segment, subscribe_start, subscribe_end);
+
+    let from_re = Regex::new(r"\bfrom\s*\(").expect("valid from regex");
+    from_re
+        .find(statement)
+        .is_some_and(|m| m.start() < subscribe_start)
+}
+
 fn is_api_subscription(segment: &str, subscribe_start: usize, subscribe_end: usize) -> bool {
     let statement = statement_containing(segment, subscribe_start, subscribe_end);
 
 
     let service_call_re =
-        Regex::new(r"this\.[A-Za-z_$][A-Za-z0-9_$]*Service\.([A-Za-z_$][A-Za-z0-9_$]*)\s*\(")
+        Regex::new(r"(?:[A-Za-z_$][A-Za-z0-9_$]*\s*\.\s*)*[A-Za-z_$][A-Za-z0-9_$]*Service[A-Za-z0-9_$]*\s*\.\s*([A-Za-z_$][A-Za-z0-9_$]*)(?:\s*<[^>]+>)?\s*\(")
             .expect("valid service call regex");
     for cap in service_call_re.captures_iter(statement) {
         if api_like_method_name(&cap[1]) {
@@ -359,18 +465,36 @@ fn is_api_subscription(segment: &str, subscribe_start: usize, subscribe_end: usi
         }
     }
 
+    let service_factory_call_re = Regex::new(
+        r"(?:[A-Za-z_$][A-Za-z0-9_$]*\s*\.\s*)*[A-Za-z_$][A-Za-z0-9_$]*Service\s*\(\s*\)\s*\.\s*([A-Za-z_$][A-Za-z0-9_$]*)(?:\s*<[^>]+>)?\s*\(",
+    )
+    .expect("valid service factory call regex");
+    for cap in service_factory_call_re.captures_iter(statement) {
+        if api_like_method_name(&cap[1]) {
+            return true;
+        }
+    }
+
     let api_client_re = Regex::new(
-        r"(?:this\.)?apiClient\.(?:getAll|get|post|put|patch|delete|request|upload|download)\s*\(",
+        r"(?:this\.)?apiClient\.(?:getAll|get|post|put|patch|delete|request|upload|download)(?:\s*<[^>]+>)?\s*\(",
     )
     .expect("valid api client regex");
     if api_client_re.is_match(statement) {
         return true;
     }
 
-    let http_re = Regex::new(r"(?:this\.)?http\.(?:get|post|put|patch|delete|request)\s*\(")
+    let http_re = Regex::new(r"(?:this\.)?http\.(?:get|post|put|patch|delete|request)(?:\s*<[^>]+>)?\s*\(")
         .expect("valid http regex");
     if http_re.is_match(statement) {
         return true;
+    }
+
+    let this_method_re = Regex::new(r"this\.([A-Za-z_$][A-Za-z0-9_$]*)(?:\s*<[^>]+>)?\s*\(")
+        .expect("valid this method regex");
+    for cap in this_method_re.captures_iter(statement) {
+        if api_like_method_name(&cap[1]) {
+            return true;
+        }
     }
 
     let generic_api_obj_re = Regex::new(
@@ -395,6 +519,69 @@ fn is_modal_render_subscription(segment: &str, subscribe_start: usize, subscribe
     .expect("valid modal render regex");
 
     modal_render_re.find(statement).is_some_and(|m| m.start() < subscribe_start)
+}
+
+fn is_modal_service_result_subscription(
+    segment: &str,
+    subscribe_start: usize,
+    subscribe_end: usize,
+) -> bool {
+    let statement = statement_containing(segment, subscribe_start, subscribe_end);
+
+    let modal_service_re = Regex::new(
+        r"(?:[A-Za-z_$][A-Za-z0-9_$]*\s*\.\s*)*[A-Za-z_$][A-Za-z0-9_$]*(?:Modal|Popup)Service\s*\.\s*show[A-Za-z0-9_$]*(?:\s*<[^>]+>)?\s*\(",
+    )
+    .expect("valid modal service regex");
+
+    modal_service_re
+        .find(statement)
+        .is_some_and(|m| m.start() < subscribe_start)
+}
+
+fn is_submit_action_subscription(
+    segment: &str,
+    subscribe_start: usize,
+    subscribe_end: usize,
+) -> bool {
+    let statement = statement_containing(segment, subscribe_start, subscribe_end);
+    Regex::new(r"\b[A-Za-z_$][A-Za-z0-9_$]*Action\s*\(")
+        .expect("valid action call regex")
+        .find(statement)
+        .is_some_and(|m| m.start() < subscribe_start)
+}
+
+fn is_modal_or_popup_output_subscription(
+    segment: &str,
+    subscribe_start: usize,
+    subscribe_end: usize,
+) -> bool {
+    let statement = statement_containing(segment, subscribe_start, subscribe_end);
+
+    let output_re = Regex::new(
+        r"[A-Za-z_$][A-Za-z0-9_$]*(?:Modal|Popup|Component)?\.(?:[A-Za-z0-9_$]*Hide|[A-Za-z0-9_$]*Close|hiding|hidden|closed|close|saved|selected|select|resolve|delete|cancel|confirm)\s*\.subscribe\s*\(",
+    )
+    .expect("valid modal/popup output regex");
+
+    output_re
+        .find(statement)
+        .is_some_and(|m| m.start() < subscribe_start)
+}
+
+fn is_output_to_observable_subscription(
+    segment: &str,
+    subscribe_start: usize,
+    subscribe_end: usize,
+) -> bool {
+    let statement = statement_containing(segment, subscribe_start, subscribe_end);
+
+    let output_re = Regex::new(
+        r"outputToObservable\s*\(\s*[A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$][A-Za-z0-9_$]*)+\s*\)\s*\.subscribe\s*\(",
+    )
+    .expect("valid outputToObservable regex");
+
+    output_re
+        .find(statement)
+        .is_some_and(|m| m.start() < subscribe_start)
 }
 
 fn is_default_safe_finite_subscription(
@@ -445,21 +632,47 @@ fn api_like_method_name(method_name: &str) -> bool {
         "verify",
         "validate",
         "check",
+        "retry",
         "trigger",
+        "batch",
+        "bootstrap",
+        "switch",
         "download",
         "upload",
         "import",
         "export",
+        "increment",
+        "decrement",
         "copy",
         "duplicate",
         "apply",
         "add",
+        "assign",
+        "unassign",
         "remove",
         "change",
     ];
     prefix_matches
         .iter()
         .any(|prefix| lower.starts_with(prefix))
+}
+
+fn is_auto_unsubscribe_array_push_subscription(
+    segment: &str,
+    subscribe_start: usize,
+    subscribe_end: usize,
+    config: &AutoUnsubscribeConfig,
+) -> bool {
+    let statement = statement_containing(segment, subscribe_start, subscribe_end);
+    let push_re = Regex::new(r"this\.([A-Za-z_$][A-Za-z0-9_$]*)\.push\s*\(")
+        .expect("valid array push regex");
+
+    push_re.captures_iter(statement).any(|cap| {
+        let Some(m) = cap.get(0) else {
+            return false;
+        };
+        m.start() < subscribe_start && config.handles_array(&cap[1])
+    })
 }
 
 fn collect_auto_managed_subscription_ranges(
@@ -469,7 +682,7 @@ fn collect_auto_managed_subscription_ranges(
     let mut ranges = Vec::new();
 
     let this_property_assign_re =
-        Regex::new(r"this\.([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*[^;\n]*?\.subscribe\s*\(")
+        Regex::new(r"(?s)this\.([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*.*?\.subscribe\s*\(")
             .expect("valid this property assignment regex");
 
     let array_push_with_subscribe_re =
@@ -593,7 +806,7 @@ fn detect_dom_listeners(
     uncertain_assignment: bool,
 ) -> Vec<LeakFinding> {
     let add_named_re = Regex::new(
-        r#"addEventListener\s*\(\s*['\"]([^'\"]+)['\"]\s*,\s*([A-Za-z_$][A-Za-z0-9_$]*)"#,
+        r#"addEventListener\s*\(\s*['\"]([^'\"]+)['\"]\s*,\s*(?:function\s+)?([A-Za-z_$][A-Za-z0-9_$]*)"#,
     )
     .expect("valid addEventListener regex");
     let remove_named_re = Regex::new(
@@ -607,6 +820,16 @@ fn detect_dom_listeners(
         let event = cap[1].to_string();
         let handler = cap[2].to_string();
         *removed_pairs.entry((event, handler)).or_insert(0) += 1;
+    }
+
+    if segment.contains("<reference lib=\"webworker\"")
+        || segment.contains("<reference lib='webworker'")
+        || (Regex::new(r#"addEventListener\s*\(\s*['\"]message['\"]"#)
+            .expect("valid worker message listener regex")
+            .is_match(segment)
+            && segment.contains("postMessage("))
+    {
+        return Vec::new();
     }
 
     let mut findings = Vec::new();
@@ -623,6 +846,13 @@ fn detect_dom_listeners(
         }
 
         let m = cap.get(0).expect("capture 0 exists");
+        if listener_removes_itself(segment, m.start(), m.end(), &event, &handler)
+            || listener_removed_via_property(segment, m.start(), &event, &handler)
+            || is_listener_on_local_created_element(segment, m.start(), m.end())
+        {
+            continue;
+        }
+
         let line = base_line + line_number_at(segment, m.start()) - 1;
         findings.push(LeakFinding {
             severity: adjusted_severity(Severity::High, uncertain_assignment),
@@ -639,6 +869,10 @@ fn detect_dom_listeners(
     let any_add_count = add_any_re.find_iter(segment).count();
     if any_add_count > named_add_count {
         for m in add_any_re.find_iter(segment).skip(named_add_count) {
+            if is_listener_on_local_created_element(segment, m.start(), m.end()) {
+                continue;
+            }
+
             let line = base_line + line_number_at(segment, m.start()) - 1;
             findings.push(LeakFinding {
                 severity: adjusted_severity(Severity::Medium, uncertain_assignment),
@@ -652,6 +886,82 @@ fn detect_dom_listeners(
     }
 
     findings
+}
+
+fn listener_removes_itself(
+    segment: &str,
+    add_start: usize,
+    add_end: usize,
+    event: &str,
+    handler: &str,
+) -> bool {
+    let statement = statement_containing(segment, add_start, add_end);
+    let remove_pattern = format!(
+        r#"removeEventListener\s*\(\s*['\"]{}['\"]\s*,\s*{}\b"#,
+        regex::escape(event),
+        regex::escape(handler)
+    );
+    let Ok(remove_re) = Regex::new(&remove_pattern) else {
+        return false;
+    };
+
+    remove_re.find(statement).is_some_and(|m| m.start() > add_end)
+}
+
+fn listener_removed_via_property(
+    segment: &str,
+    add_start: usize,
+    event: &str,
+    handler: &str,
+) -> bool {
+    let assignment_pattern = format!(
+        r"this\.([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*{}\b",
+        regex::escape(handler)
+    );
+    let Ok(assignment_re) = Regex::new(&assignment_pattern) else {
+        return false;
+    };
+
+    assignment_re.captures_iter(segment).any(|cap| {
+        let Some(assignment_match) = cap.get(0) else {
+            return false;
+        };
+        if assignment_match.start() < add_start {
+            return false;
+        }
+
+        let property = &cap[1];
+        let remove_pattern = format!(
+            r#"removeEventListener\s*\(\s*['\"]{}['\"]\s*,\s*this\.{}\b"#,
+            regex::escape(event),
+            regex::escape(property)
+        );
+        let Ok(remove_re) = Regex::new(&remove_pattern) else {
+            return false;
+        };
+        remove_re.is_match(segment)
+    })
+}
+
+fn is_listener_on_local_created_element(segment: &str, add_start: usize, add_end: usize) -> bool {
+    let statement = statement_containing(segment, add_start, add_end);
+    let add_re = Regex::new(r"([A-Za-z_$][A-Za-z0-9_$]*)\.addEventListener\s*\(")
+        .expect("valid add listener target regex");
+    let Some(cap) = add_re.captures(statement) else {
+        return false;
+    };
+    let target = &cap[1];
+
+    let create_pattern = format!(
+        r"(?:const|let|var)\s+{}\s*=\s*document\.createElement\s*\(",
+        regex::escape(target)
+    );
+    let create_re = match Regex::new(&create_pattern) {
+        Ok(re) => re,
+        Err(_) => return false,
+    };
+
+    create_re.find(segment).is_some_and(|m| m.start() < add_start)
 }
 
 fn detect_timers(
@@ -718,7 +1028,14 @@ fn detect_observers(
     let created_count = observer_new_re.find_iter(segment).count();
     let disconnected_count = disconnect_re.find_iter(segment).count();
 
-    if created_count <= disconnected_count {
+    if created_count <= disconnected_count
+        || Regex::new(r"(?s)return\s+function\s+unsubscribe\s*\([^)]*\)\s*\{.*?\.disconnect\s*\(")
+            .expect("valid observer unsubscribe cleanup regex")
+            .is_match(segment)
+        || Regex::new(r"(?m)^\s*export\s+function\s+create[A-Za-z0-9_$]*Observer\b")
+            .expect("valid observer factory regex")
+            .is_match(segment)
+    {
         return Vec::new();
     }
 
