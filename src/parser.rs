@@ -30,6 +30,11 @@ static LAZY_IMPORT_RE: LazyLock<Regex> = LazyLock::new(|| {
         .unwrap()
 });
 
+static DYNAMIC_DESTRUCTURED_IMPORT_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?s)(?:const|let|var)\s*\{([^}]+)\}\s*=\s*(?:await\s+)?import\s*\(\s*['"]([^'"]+)['"]\s*\)"#)
+        .unwrap()
+});
+
 static WORKER_IMPORT_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"new\s+Worker\s*\(\s*new\s+URL\s*\(\s*['"]([^'"]+)['"]"#).unwrap()
 });
@@ -266,6 +271,32 @@ impl<'a> Parser<'a> {
             }
         }
 
+        // Handle dynamic destructured imports:
+        // const { Foo } = await import('./foo')
+        // const { Foo: LocalFoo } = await import('./foo')
+        for cap in DYNAMIC_DESTRUCTURED_IMPORT_RE.captures_iter(&content_without_comments) {
+            let names_str = &cap[1];
+            let import_path = cap[2].to_string();
+
+            let resolved_path = match resolve_import_path(file_path, &import_path, self.root_path) {
+                Some(path) => path,
+                None => continue,
+            };
+
+            for name_part in names_str.split(',') {
+                let name_part = name_part.trim();
+                if name_part.is_empty() || name_part.starts_with("...") {
+                    continue;
+                }
+
+                let Some(name) = normalize_destructured_import(name_part) else {
+                    continue;
+                };
+
+                imports.push(ImportInfo::new(name, resolved_path.clone()));
+            }
+        }
+
         // Handle Worker imports: new Worker(new URL('...'))
         for cap in WORKER_IMPORT_RE.captures_iter(&normalized_content) {
             let import_path = cap[1].to_string();
@@ -289,6 +320,21 @@ impl<'a> Parser<'a> {
         }
 
         imports
+    }
+}
+
+fn normalize_destructured_import(name_part: &str) -> Option<String> {
+    let without_default = name_part.split('=').next().unwrap_or(name_part).trim();
+    let imported_name = without_default
+        .split(':')
+        .next()
+        .unwrap_or(without_default)
+        .trim();
+
+    if imported_name.is_empty() {
+        None
+    } else {
+        Some(imported_name.to_string())
     }
 }
 
@@ -413,7 +459,9 @@ fn resolve_import_path(
     import_source: &str,
     root_path: &Path,
 ) -> Option<String> {
-    let base_path = if import_source.starts_with("@awork/") {
+    let base_path = if import_source == "@ui-annotator" {
+        root_path.join("libs/ui-annotator/src/lib/create-ui-annotator")
+    } else if import_source.starts_with("@awork/") {
         let rest = &import_source[7..];
         root_path.join("libs/shared/src/lib").join(rest)
     } else if import_source.starts_with("./") || import_source.starts_with("../") {

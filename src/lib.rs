@@ -1142,6 +1142,37 @@ import { Bar } from './bar';"#;
     }
 
     #[test]
+    fn test_extract_await_destructured_dynamic_import() {
+        let content = r#"const { createUiAnnotator } = await import('@ui-annotator')"#;
+        let root_path = Path::new("/project");
+        let file_path = "/project/apps/web/src/app/service.ts";
+
+        let parser = Parser::new(root_path);
+        let imports = parser.extract_imports(content, file_path);
+
+        assert_eq!(imports.len(), 1);
+        assert_eq!(imports[0].name, "createUiAnnotator");
+        assert!(imports[0].path.contains("libs/ui-annotator/src/lib/create-ui-annotator"));
+    }
+
+    #[test]
+    fn test_extract_multiline_aliased_destructured_dynamic_import() {
+        let content = r#"const {
+  Foo: LocalFoo,
+  Bar = fallback,
+} = await import('./lazy')"#;
+        let root_path = Path::new("/project");
+        let file_path = "/project/src/app/service.ts";
+
+        let parser = Parser::new(root_path);
+        let imports = parser.extract_imports(content, file_path);
+
+        assert_eq!(imports.len(), 2);
+        assert_eq!(imports[0].name, "Foo");
+        assert_eq!(imports[1].name, "Bar");
+    }
+
+    #[test]
     fn test_is_test_file_spec_ts() {
         assert!(super::is_test_file("/path/to/foo.spec.ts"));
         assert!(super::is_test_file("foo.spec.ts"));
