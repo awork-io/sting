@@ -106,7 +106,7 @@ sting graph ./my-project --entity-type component,service,directive,pipe
 
 ### affected
 
-List entities affected by git changes compared to a base reference.
+List affected file paths, one per line, compared to a base reference.
 
 ```sh
 # Basic usage - compare against main branch
@@ -124,6 +124,9 @@ sting affected ./my-project --base main --tests
 # Filter by project type (web, mobile, or libs)
 sting affected ./my-project --base main --project web
 sting affected ./my-project --base main --project libs --tests
+
+# Show the detailed human-readable summary
+sting affected ./my-project --base main --summary
 ```
 
 **Options:**
@@ -131,6 +134,7 @@ sting affected ./my-project --base main --project libs --tests
 - `--transitive` - Include transitive consumers (multi-hop dependency traversal)
 - `--paths` - Output only unique directory paths (without filenames)
 - `--tests` - Output full paths to test files related to affected entities
+- `--summary` - Output the detailed human-readable summary
 - `--project` - Filter results by project type: `web`, `mobile`, or `libs`
 
 ### chain

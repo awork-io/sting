@@ -45,7 +45,7 @@ pub enum Commands {
     Unused(UnusedArgs),
     /// Outputs the dependency graph as JSON (D3.js compatible)
     Graph(GraphArgs),
-    /// Lists all entities affected by git changes compared to a base reference
+    /// Lists all file paths affected by git changes compared to a base reference
     Affected(AffectedArgs),
     /// Finds the dependency chain between two entities
     Chain(ChainArgs),
@@ -131,6 +131,9 @@ pub struct AffectedArgs {
     /// Output full paths to test files related to affected entities
     #[arg(long, default_value = "false", conflicts_with = "paths")]
     pub tests: bool,
+    /// Output the detailed human-readable summary instead of path-only output
+    #[arg(long, default_value = "false", conflicts_with_all = ["paths", "tests"])]
+    pub summary: bool,
     /// Filter results to a specific project type (web, mobile, or libs)
     #[arg(long, value_enum)]
     pub project: Option<ProjectType>,

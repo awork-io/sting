@@ -26,6 +26,7 @@ impl fmt::Display for ChangeType {
 #[derive(Debug, Clone)]
 pub struct ChangedFile {
     pub path: String,
+    #[allow(dead_code)]
     pub change_type: ChangeType,
 }
 

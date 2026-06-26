@@ -44,7 +44,8 @@ Use this skill when the user asks:
 
 ### Affected analysis
 
-- `sting affected <path> --base <ref>` - Show direct + consumer impact
+- `sting affected <path> --base <ref>` - Output affected file paths (one per line)
+- `sting affected <path> --base <ref> --summary` - Show detailed human-readable summary
 - `sting affected <path> --base <ref> --transitive` - Include multi-hop consumers
 - `sting affected <path> --base <ref> --paths` - Output only affected directories
 - `sting affected <path> --base <ref> --tests` - Output related test files
@@ -137,6 +138,7 @@ Behavior notes:
 - `--transitive`: include multi-hop consumers
 - `--paths`: output unique directories only
 - `--tests`: output full test-file paths
+- `--summary`: output detailed human-readable summary
 - `--project <type>`: one of `web`, `mobile`, `libs`
 
 ### `chain`

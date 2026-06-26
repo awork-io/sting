@@ -82,6 +82,7 @@ fn main() -> Result<()> {
                 args.transitive,
                 args.paths,
                 args.tests,
+                args.summary,
                 project_filter,
             )
             .with_context(|| {

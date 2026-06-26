@@ -254,22 +254,23 @@ pub fn affected(
     transitive: bool,
     paths_only: bool,
     tests_only: bool,
+    summary: bool,
     project_filter: Option<&str>,
 ) -> Result<()> {
-    if !paths_only && !tests_only {
+    if summary {
         println!("Analyzing changes between HEAD and '{}'...\n", base_ref);
     }
 
     let changed_files = get_changed_files(root_path, base_ref)?;
 
     if changed_files.is_empty() {
-        if !paths_only && !tests_only {
+        if summary {
             println!("No changes found between HEAD and '{}'.", base_ref);
         }
         return Ok(());
     }
 
-    if !paths_only && !tests_only {
+    if summary {
         println!("Changed files ({}):", changed_files.len());
         for cf in &changed_files {
             println!("  [{}] {}", cf.change_type, cf.path);
@@ -375,28 +376,7 @@ pub fn affected(
         return Ok(());
     }
 
-    if paths_only {
-        let mut unique_dirs: HashSet<String> = HashSet::new();
-
-        for (entity, _) in &direct_affected {
-            if let Some(parent) = Path::new(&entity.file_path).parent() {
-                unique_dirs.insert(parent.to_string_lossy().to_string());
-            }
-        }
-
-        for (entity, _) in &consumers {
-            if let Some(parent) = Path::new(&entity.file_path).parent() {
-                unique_dirs.insert(parent.to_string_lossy().to_string());
-            }
-        }
-
-        let mut sorted_dirs: Vec<_> = unique_dirs.into_iter().collect();
-        sorted_dirs.sort();
-
-        for dir in sorted_dirs {
-            println!("{}", dir);
-        }
-    } else {
+    if summary {
         println!("---");
         println!("Directly affected entities ({}):\n", direct_affected.len());
 
@@ -423,9 +403,55 @@ pub fn affected(
             consumers.len(),
             total
         );
+    } else if paths_only {
+        let mut unique_dirs: HashSet<String> = HashSet::new();
+
+        for (entity, _) in &direct_affected {
+            if let Some(parent) = Path::new(&entity.file_path).parent() {
+                unique_dirs.insert(parent.to_string_lossy().to_string());
+            }
+        }
+
+        for (entity, _) in &consumers {
+            if let Some(parent) = Path::new(&entity.file_path).parent() {
+                unique_dirs.insert(parent.to_string_lossy().to_string());
+            }
+        }
+
+        let mut sorted_dirs: Vec<_> = unique_dirs.into_iter().collect();
+        sorted_dirs.sort();
+
+        for dir in sorted_dirs {
+            println!("{}", dir);
+        }
+    } else {
+        let mut affected_files: HashSet<String> = HashSet::new();
+
+        for (entity, _) in &direct_affected {
+            affected_files.insert(entity.file_path.clone());
+        }
+
+        for (entity, _) in &consumers {
+            affected_files.insert(entity.file_path.clone());
+        }
+
+        let mut sorted_files: Vec<_> = affected_files.into_iter().collect();
+        sorted_files.sort();
+
+        for file_path in sorted_files {
+            println!("{}", file_path);
+        }
     }
 
     Ok(())
+}
+
+fn print_affected_entity(entity: &Entity, reason: &str) {
+    println!("Name: {}", entity.name);
+    println!("Type: {}", entity.entity_type);
+    println!("File: {}", entity.file_path);
+    println!("Reason: {}", reason);
+    println!("---");
 }
 
 fn change_type_to_reason(change_type: &ChangeType) -> &'static str {
@@ -724,14 +750,6 @@ pub fn affected_mem_leaks(
     }
 
     Ok(())
-}
-
-fn print_affected_entity(entity: &Entity, reason: &str) {
-    println!("Name: {}", entity.name);
-    println!("Type: {}", entity.entity_type);
-    println!("File: {}", entity.file_path);
-    println!("Reason: {}", reason);
-    println!("---");
 }
 
 #[cfg(test)]
